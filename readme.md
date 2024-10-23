@@ -1,7 +1,7 @@
 # Motivation
 * LLM model (such as GPT, LLAMA, etc) has been provided
 * [llama.cpp](https://github.com/ggerganov/llama.cpp.git) has created by ggerganov in Pure C/C++. I might be applied on various platform (embedded device, cloud, ...)
-* It is essential to have a simple tool to explore/research the capability of applying LLM model in various domain.
+* This tool is created as an essential stuff make it simple to explore/research the capability of applying LLM model in various domain and various application.
 
 # Note
 This is demonstration version, some issues or error checking is not fully validated.
