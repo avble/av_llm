@@ -5,7 +5,8 @@
 
 # Note
 This is demonstration version, some issues or error checking is not fully validated.
-Contact me via avble.harry dot gmail.com if any
+<br>
+Contact me via `avble.harry dot gmail.com` if any
 
 # Features
 * OpenAI API compatible server (chat and completion endpoint)
