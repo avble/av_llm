@@ -12,8 +12,9 @@ Contact me via avble.harry dot gmail.com if any
 * Simple Web UI for explore/debug
 * Currently, it only supports chat application
 
-![demo-1](https://github.com/avble/av_llm/blob/master/image/demon_1.jpg?raw=true)
-![demo-2](https://github.com/avble/av_llm/blob/master/image/demon_2.jpg?raw=true)
+## Some snapshot
+![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_1.JPG?raw=true)
+![demo-2](https://github.com/avble/av_llm/blob/main/image/demo_2.JPG?raw=true)
 
 
 # Quick started
@@ -35,9 +36,7 @@ Access to Web interface at http://127.0.0.1:8080
 * Web UI: Provide a simple web UI interface to explore/experiment
 
 # Compile and run
-``` shell
-
-```
+T.B.D
 
 # Future work
 * Support more LLM model
