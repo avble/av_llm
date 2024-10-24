@@ -39,8 +39,25 @@ Access to Web interface at http://127.0.0.1:8080
 # Compile and run
 T.B.D
 
+# Download model and run
+``` cmd
+docker run -p 8080:8080 -v $your_host_model_folder:/work/model av_llm ./av_llm -m /work/model/$your_model_file
+```
+
+# Supported model
+This application is built on the top of [llama.cpp](https://github.com/ggerganov/llama.cpp), so it should work any model which the [llama.cpp](https://github.com/ggerganov/llama.cpp) supports 
+* LLaMA 1
+* LLaMA 2
+* LLaMA 3
+* [Mistral-7B](https://huggingface.co/mistralai/Mistral-7B-v0.1)
+* [Mixtral MoE](https://huggingface.co/models?search=mistral-ai/Mixtral)
+* [DBRX](https://huggingface.co/databricks/dbrx-instruct)
+* [Falcon](https://huggingface.co/models?search=tiiuae/falcon)
+* [Chinese-LLaMA-Alpaca](https://github.com/ymcui/Chinese-LLaMA-Alpaca)
+
 # Future work
-* Support more LLM model
+* Support more LLM models
+* Support more OpenAI API server
 * Support more application 
 
 # Reference

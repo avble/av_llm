@@ -27,9 +27,9 @@ using json = nlohmann::ordered_json;
 
 static void print_usage(int, char **argv)
 {
-    LLAMACPP_LOG("\nexample usage:\n");
-    LLAMACPP_LOG("\n    %s -m model.gguf\n", argv[0]);
-    LLAMACPP_LOG("\n");
+    AVLLM_LOG("\nexample usage:\n");
+    AVLLM_LOG("\n    %s -m model.gguf\n", argv[0]);
+    AVLLM_LOG("\n");
 }
 
 int main(int argc, char **argv)
@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 
     static auto completions_chat_handler = [&](http::response res) -> void
     {
-        LLAMACPP_LOG_TRACE_SCOPE("completions_chat_handler")
+        AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
 
         json body_ = json::parse(res.reqwest().body());
 
@@ -109,21 +109,21 @@ int main(int argc, char **argv)
         const int n_ctx = llama_n_ctx(ctx);
         const int n_kv_req = tokens_list.size() + (n_predict - tokens_list.size());
 
-        LLAMACPP_LOG("\n");
-        LLAMACPP_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
+        AVLLM_LOG("\n");
+        AVLLM_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
 
         // make sure the KV cache is big enough to hold all the prompt and generated tokens
         if (n_kv_req > n_ctx)
         {
-            LLAMACPP_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
-            LLAMACPP_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
+            AVLLM_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
+            AVLLM_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
         }
 
         // print the prompt token-by-token
-        LLAMACPP_LOG("\n");
+        AVLLM_LOG("\n");
 
         for (auto id : tokens_list)
-            LLAMACPP_LOG("%s", llama_token_to_piece(ctx, id).c_str());
+            AVLLM_LOG("%s", llama_token_to_piece(ctx, id).c_str());
 
         // create a llama_batch with size 512
         // we use this object to submit token data for decoding
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
         batch.logits[batch.n_tokens - 1] = true;
 
         if (llama_decode(ctx, batch) != 0)
-            LLAMACPP_LOG("%s: llama_decode() failed\n", __func__);
+            AVLLM_LOG("%s: llama_decode() failed\n", __func__);
 
         // main loop
         int n_cur = batch.n_tokens;
@@ -152,13 +152,13 @@ int main(int argc, char **argv)
             // is it an end of generation?
             if (llama_token_is_eog(model, new_token_id) || n_cur == n_predict)
             {
-                LLAMACPP_LOG("\n");
+                AVLLM_LOG("\n");
                 break;
             }
 
             std::string token_str = llama_token_to_piece(ctx, new_token_id).c_str();
             res.chunk_write("data: " + oai_make_stream(token_str));
-            LLAMACPP_LOG_DEBUG("[Chunk]: %s\n", token_str);
+            AVLLM_LOG_DEBUG("[Chunk]: %s\n", token_str);
 
             // prepare the next batch
             llama_batch_clear(batch);
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
             // evaluate the current batch with the transformer model
             if (llama_decode(ctx, batch))
             {
-                LLAMACPP_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
+                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
                 break;
             }
         }
@@ -184,7 +184,7 @@ int main(int argc, char **argv)
 
     static auto handle_models = [&](http::response res)
     {
-        LLAMACPP_LOG_TRACE_SCOPE("handle_models")
+        AVLLM_LOG_TRACE_SCOPE("handle_models")
         json models = {{"object", "list"},
                        {"data",
                         {
@@ -203,23 +203,31 @@ int main(int argc, char **argv)
     {
         logger_function_trace_llamacpp __trace("", "completions_handler");
 
-        // LLAMACPP_LOG_DEBUG("completions_handler received body: %s\n", res.reqwest().body().c_str);
+        AVLLM_LOG_DEBUG("completions_handler received body: %s\n", res.reqwest().body().c_str());
 
         json body_ = json::parse(res.reqwest().body());
 
-        nlohmann::json messages_js = body_.at("messages");
-        std::string prompt;
-
-        // extract promt
-        for (const auto &msg : messages_js)
+        // check if it is stream
+        bool is_stream = false;
+        if (body_.contains("stream"))
         {
-            std::string role = (msg.contains("role") and msg.at("role").is_string()) ? msg.at("role") : "";
-            if (role == "user")
+            json js_stream = body_.at("stream");
+            if (not(js_stream.is_boolean() and js_stream.get<bool>() == true))
             {
-                std::string content = msg.at("content").get<std::string>();
-                prompt = content;
+                res.result() = http::status_code::internal_error;
+                res.end();
             }
+            is_stream = true;
         }
+
+        std::string prompt;
+        if (not(body_.contains("prompt") and body_.at("prompt").is_string()))
+        {
+            res.result() = http::status_code::internal_error;
+            res.end();
+        }
+        prompt = body_.at("prompt").get<std::string>();
+        AVLLM_LOG_DEBUG("prompt: %s\n", prompt.c_str());
 
         llama_context_params ctx_params = llama_context_params_from_gpt_params(params);
         llama_context *ctx = llama_new_context_with_model(model, ctx_params);
@@ -240,21 +248,21 @@ int main(int argc, char **argv)
         const int n_ctx = llama_n_ctx(ctx);
         const int n_kv_req = tokens_list.size() + (n_predict - tokens_list.size());
 
-        LLAMACPP_LOG("\n");
-        LLAMACPP_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
+        AVLLM_LOG("\n");
+        AVLLM_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
 
         // make sure the KV cache is big enough to hold all the prompt and generated tokens
         if (n_kv_req > n_ctx)
         {
-            LLAMACPP_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
-            LLAMACPP_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
+            AVLLM_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
+            AVLLM_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
         }
 
         // print the prompt token-by-token
-        LLAMACPP_LOG("\n");
+        AVLLM_LOG("\n");
 
         for (auto id : tokens_list)
-            LLAMACPP_LOG("%s", llama_token_to_piece(ctx, id).c_str());
+            AVLLM_LOG("%s", llama_token_to_piece(ctx, id).c_str());
 
         // create a llama_batch with size 512
         // we use this object to submit token data for decoding
@@ -269,7 +277,7 @@ int main(int argc, char **argv)
 
         if (llama_decode(ctx, batch) != 0)
         {
-            LLAMACPP_LOG("%s: llama_decode() failed\n", __func__);
+            AVLLM_LOG("%s: llama_decode() failed\n", __func__);
             llama_free(ctx);
             res.result() = http::status_code::internal_error;
             res.end();
@@ -282,7 +290,6 @@ int main(int argc, char **argv)
         res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
         res.event_source_start();
 
-        std::vector<std::string> result;
         while (n_cur <= n_predict)
         {
             const llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
@@ -290,11 +297,12 @@ int main(int argc, char **argv)
             // is it an end of generation?
             if (llama_token_is_eog(model, new_token_id) || n_cur == n_predict)
             {
-                LLAMACPP_LOG("\n");
+                AVLLM_LOG("\n");
                 break;
             }
 
-            result.push_back(llama_token_to_piece(ctx, new_token_id).c_str());
+            std::string str_token_id = llama_token_to_piece(ctx, new_token_id);
+            res.chunk_write("data: " + oai_make_stream(str_token_id, false));
 
             // prepare the next batch
             llama_batch_clear(batch);
@@ -307,16 +315,15 @@ int main(int argc, char **argv)
             // evaluate the current batch with the transformer model
             if (llama_decode(ctx, batch))
             {
-                LLAMACPP_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
+                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
                 break;
             }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        // res.set_content(std::string(result.begin(), result.end()));
 
+        res.chunk_end();
         llama_free(ctx);
-        res.end();
     };
 
     struct handle_static_file
@@ -328,7 +335,7 @@ int main(int argc, char **argv)
         }
         void operator()(http::response res)
         {
-            LLAMACPP_LOG_TRACE_SCOPE("handle_static_file")
+            AVLLM_LOG_TRACE_SCOPE("handle_static_file")
             if (not std::filesystem::exists(std::filesystem::path(file_path)))
             {
                 res.result() = http::status_code::not_found;
