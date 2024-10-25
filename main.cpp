@@ -158,7 +158,7 @@ int main(int argc, char **argv)
 
             std::string token_str = llama_token_to_piece(ctx, new_token_id).c_str();
             res.chunk_write("data: " + oai_make_stream(token_str));
-            AVLLM_LOG_DEBUG("[Chunk]: %s\n", token_str);
+            AVLLM_LOG_DEBUG("[Chunk]: %s\n", token_str.c_str());
 
             // prepare the next batch
             llama_batch_clear(batch);
