@@ -35,27 +35,17 @@ static void print_usage(int, char **argv)
 int main(int argc, char **argv)
 {
 
-    gpt_params params;
-
+    common_params params;
     params.prompt = "hello";
     params.n_predict = 1024;
 
-    if (!gpt_params_parse(argc, argv, params, LLAMA_EXAMPLE_COMMON, print_usage))
+    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage))
     {
+        fprintf(stderr, "%s: error in parsing the argument\n", __func__);
         return 1;
     }
 
-    gpt_init();
-
-    // total length of the sequence including the prompt
-    const int n_predict = params.n_predict;
-
-    // init LLM
-    llama_backend_init();
-    llama_numa_init(params.numa);
-
-    // initialize the model
-    llama_model_params model_params = llama_model_params_from_gpt_params(params);
+    llama_model_params model_params = common_model_params_to_llama(params);
     llama_model *model = llama_load_model_from_file(params.model.c_str(), model_params);
 
     if (model == NULL)
@@ -64,10 +54,131 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    auto sparams = llama_sampler_chain_default_params();
-    sparams.no_perf = false;
-    llama_sampler *smpl = llama_sampler_chain_init(sparams);
-    llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+    // print the token as text to screen
+    static auto model_print_token = [&](llama_model *model, std::vector<llama_token> &tokens)
+    {
+        for (auto token_ : tokens)
+        {
+            char buf[128];
+            int n = llama_token_to_piece(model, token_, buf, sizeof(buf), 0, true);
+            if (n < 0)
+            {
+                fprintf(stderr, "%s: error: failed to convert token to piece\n", __func__);
+                return;
+            }
+            std::string s(buf, n);
+            printf("%s", s.c_str());
+            fflush(stdout);
+        }
+    };
+
+    struct avllm_context_param
+    {
+        llama_context *ctx;
+        llama_sampler *smpl;
+    };
+
+    static auto model_context_init = [](llama_model *model, common_params &params) -> avllm_context_param
+    {
+        llama_context_params ctx_params = common_context_params_to_llama(params);
+        ctx_params.no_perf = false;
+
+        llama_context *ctx = llama_new_context_with_model(model, ctx_params);
+        if (ctx == NULL)
+        {
+            fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
+            return {.ctx = nullptr, .smpl = nullptr};
+        }
+
+        // initialize the sampler
+        auto sparams = llama_sampler_chain_default_params();
+        sparams.no_perf = false;
+        llama_sampler *smpl = llama_sampler_chain_init(sparams);
+
+        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+
+        return {.ctx = ctx, .smpl = smpl};
+    };
+
+    static auto model_context_deinit = [](avllm_context_param &ctx)
+    {
+        fprintf(stderr, "\n");
+        llama_perf_sampler_print(ctx.smpl);
+        llama_perf_context_print(ctx.ctx);
+        fprintf(stderr, "\n");
+        llama_sampler_free(ctx.smpl);
+        llama_free(ctx.ctx);
+        ctx.smpl = nullptr;
+        ctx.ctx = nullptr;
+    };
+
+    static auto model_context_batch_decode = [](llama_model *model, llama_context *ctx, std::string data)
+    {
+        const int n_ins = -llama_tokenize(model, data.c_str(), data.size(), NULL, 0, true, true);
+        std::vector<llama_token> tokens(n_ins);
+        if (llama_tokenize(model, data.c_str(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
+        {
+            fprintf(stderr, "%s: error: failed to tokenize the ins\n", __func__);
+            return;
+        }
+
+        model_print_token(model, tokens);
+        std::cout << "\n";
+        llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
+
+        if (llama_decode(ctx, batch))
+        {
+            fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
+            return;
+        }
+    };
+
+    static auto model_context_get_text = [&](llama_model *model, const avllm_context_param &ctx, std::function<int(int rc, const std::string &text)> func_hdl, int max_token = 1024)
+    {
+        const auto t_main_start = ggml_time_us();
+        llama_token new_token_id;
+        int num_token = 0;
+        while (num_token++ < max_token)
+        {
+            new_token_id = llama_sampler_sample(ctx.smpl, ctx.ctx, -1);
+
+            // is it an end of generation?
+            if (llama_token_is_eog(model, new_token_id))
+            {
+                func_hdl(-1, "");
+                break;
+            }
+
+            char buf[128];
+            int n = llama_token_to_piece(model, new_token_id, buf, sizeof(buf), 0, true);
+            if (n < 0)
+            {
+                fprintf(stderr, "%s: error: failed to convert token to piece\n", __func__);
+                break;
+            }
+            // std::string text(buf, n);
+            // printf("%s", text.c_str());
+            // fflush(stdout);
+
+            llama_batch batch = llama_batch_get_one(&new_token_id, 1);
+            // evaluate the current batch with the transformer model
+            if (llama_decode(ctx.ctx, batch))
+            {
+                fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
+                func_hdl(-1, "");
+                break;
+            }
+
+            if (func_hdl(0, std::string(buf, n)) != 0)
+                break;
+        }
+    };
+
+    static auto model_context_token_get_num = [](llama_model *model, std::string data)
+    {
+        const int n_token = -llama_tokenize(model, data.c_str(), data.size(), NULL, 0, true, true);
+        return n_token;
+    };
 
     static auto completions_chat_handler = [&](http::response res) -> void
     {
@@ -89,97 +200,30 @@ int main(int argc, char **argv)
             }
         }
 
-        llama_context_params ctx_params = llama_context_params_from_gpt_params(params);
-        llama_context *ctx = llama_new_context_with_model(model, ctx_params);
-
-        if (ctx == NULL)
+        avllm_context_param avllm_ctx_ = model_context_init(model, params);
+        if (avllm_ctx_.ctx == nullptr or avllm_ctx_.smpl == nullptr)
         {
-            fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
             res.result() = http::status_code::internal_error;
             res.end();
-            return;
         }
 
-        // tokenize the prompt
-        params.prompt = prompt;
+        model_context_batch_decode(model, avllm_ctx_.ctx, prompt);
 
-        std::vector<llama_token> tokens_list;
-        tokens_list = ::llama_tokenize(ctx, params.prompt, true);
-
-        const int n_ctx = llama_n_ctx(ctx);
-        const int n_kv_req = tokens_list.size() + (n_predict - tokens_list.size());
-
-        AVLLM_LOG("\n");
-        AVLLM_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
-
-        // make sure the KV cache is big enough to hold all the prompt and generated tokens
-        if (n_kv_req > n_ctx)
-        {
-            AVLLM_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
-            AVLLM_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
-        }
-
-        // print the prompt token-by-token
-        AVLLM_LOG("\n");
-
-        for (auto id : tokens_list)
-            AVLLM_LOG("%s", llama_token_to_piece(ctx, id).c_str());
-
-        // create a llama_batch with size 512
-        // we use this object to submit token data for decoding
-        llama_batch batch = llama_batch_init(512, 0, 1);
-
-        // evaluate the initial prompt
-        for (size_t i = 0; i < tokens_list.size(); i++)
-            llama_batch_add(batch, tokens_list[i], i, {0}, false);
-
-        // llama_decode will output logits only for the last token of the prompt
-        batch.logits[batch.n_tokens - 1] = true;
-
-        if (llama_decode(ctx, batch) != 0)
-            AVLLM_LOG("%s: llama_decode() failed\n", __func__);
-
-        // main loop
-        int n_cur = batch.n_tokens;
-
-        res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
         res.event_source_start();
 
-        while (n_cur <= n_predict)
+        auto get_text_hdl = [&](int rc, const std::string &text) -> int
         {
-            const llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
+            if (rc == 0)
+                res.chunk_write("data: " + oai_make_stream(text));
 
-            // is it an end of generation?
-            if (llama_token_is_eog(model, new_token_id) || n_cur == n_predict)
-            {
-                AVLLM_LOG("\n");
-                break;
-            }
+            return 0;
+        };
 
-            std::string token_str = llama_token_to_piece(ctx, new_token_id).c_str();
-            res.chunk_write("data: " + oai_make_stream(token_str));
-            AVLLM_LOG_DEBUG("[Chunk]: %s\n", token_str.c_str());
-
-            // prepare the next batch
-            llama_batch_clear(batch);
-
-            // push this new token for next evaluation
-            llama_batch_add(batch, new_token_id, n_cur, {0}, true);
-
-            n_cur += 1;
-
-            // evaluate the current batch with the transformer model
-            if (llama_decode(ctx, batch))
-            {
-                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
-                break;
-            }
-        }
+        model_context_get_text(model, avllm_ctx_, get_text_hdl);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         res.chunk_end();
-
-        llama_free(ctx);
+        model_context_deinit(avllm_ctx_);
     };
 
     static auto handle_models = [&](http::response res)
@@ -229,101 +273,32 @@ int main(int argc, char **argv)
         prompt = body_.at("prompt").get<std::string>();
         AVLLM_LOG_DEBUG("prompt: %s\n", prompt.c_str());
 
-        llama_context_params ctx_params = llama_context_params_from_gpt_params(params);
-        llama_context *ctx = llama_new_context_with_model(model, ctx_params);
-
-        if (ctx == NULL)
+        avllm_context_param avllm_ctx_ = model_context_init(model, params);
+        if (avllm_ctx_.ctx == nullptr or avllm_ctx_.smpl == nullptr)
         {
-            fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
-            res.result() = http::status_code::internal_error;
-            return;
-        }
-
-        // tokenize the prompt
-        params.prompt = prompt;
-
-        std::vector<llama_token> tokens_list;
-        tokens_list = ::llama_tokenize(ctx, params.prompt, true);
-
-        const int n_ctx = llama_n_ctx(ctx);
-        const int n_kv_req = tokens_list.size() + (n_predict - tokens_list.size());
-
-        AVLLM_LOG("\n");
-        AVLLM_LOG_INFO("%s: n_predict = %d, n_ctx = %d, n_kv_req = %d\n", __func__, n_predict, n_ctx, n_kv_req);
-
-        // make sure the KV cache is big enough to hold all the prompt and generated tokens
-        if (n_kv_req > n_ctx)
-        {
-            AVLLM_LOG_ERROR("%s: error: n_kv_req > n_ctx, the required KV cache size is not big enough\n", __func__);
-            AVLLM_LOG_ERROR("%s:        either reduce n_predict or increase n_ctx\n", __func__);
-        }
-
-        // print the prompt token-by-token
-        AVLLM_LOG("\n");
-
-        for (auto id : tokens_list)
-            AVLLM_LOG("%s", llama_token_to_piece(ctx, id).c_str());
-
-        // create a llama_batch with size 512
-        // we use this object to submit token data for decoding
-        llama_batch batch = llama_batch_init(512, 0, 1);
-
-        // evaluate the initial prompt
-        for (size_t i = 0; i < tokens_list.size(); i++)
-            llama_batch_add(batch, tokens_list[i], i, {0}, false);
-
-        // llama_decode will output logits only for the last token of the prompt
-        batch.logits[batch.n_tokens - 1] = true;
-
-        if (llama_decode(ctx, batch) != 0)
-        {
-            AVLLM_LOG("%s: llama_decode() failed\n", __func__);
-            llama_free(ctx);
             res.result() = http::status_code::internal_error;
             res.end();
             return;
         }
 
-        // main loop
-        int n_cur = batch.n_tokens;
+        model_context_batch_decode(model, avllm_ctx_.ctx, prompt);
 
-        res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
+        // res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
         res.event_source_start();
 
-        while (n_cur <= n_predict)
+        auto get_text_hdl = [&](int rc, const std::string &text) -> int
         {
-            const llama_token new_token_id = llama_sampler_sample(smpl, ctx, -1);
+            if (rc != 0)
+                res.chunk_write("data: " + oai_make_stream(text, false));
 
-            // is it an end of generation?
-            if (llama_token_is_eog(model, new_token_id) || n_cur == n_predict)
-            {
-                AVLLM_LOG("\n");
-                break;
-            }
+            return 0;
+        };
 
-            std::string str_token_id = llama_token_to_piece(ctx, new_token_id);
-            res.chunk_write("data: " + oai_make_stream(str_token_id, false));
-
-            // prepare the next batch
-            llama_batch_clear(batch);
-
-            // push this new token for next evaluation
-            llama_batch_add(batch, new_token_id, n_cur, {0}, true);
-
-            n_cur += 1;
-
-            // evaluate the current batch with the transformer model
-            if (llama_decode(ctx, batch))
-            {
-                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
-                break;
-            }
-        }
+        model_context_get_text(model, avllm_ctx_, get_text_hdl);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
         res.chunk_end();
-        llama_free(ctx);
+        model_context_deinit(avllm_ctx_);
     };
 
     struct handle_static_file
@@ -399,9 +374,6 @@ int main(int argc, char **argv)
 
     LOG("\n");
 
-    llama_sampler_free(smpl);
     llama_free_model(model);
-    llama_backend_free();
-
     return 0;
 }
