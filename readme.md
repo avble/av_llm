@@ -34,9 +34,6 @@ Access to Web interface at http://127.0.0.1:8080
 * LLM Inference: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
 * Web UI: Provide a simple web UI interface to explore/experiment
 
-# Its applications
-## Coding asistant
-[copilot](https://github.com/features/copilot), [codex](https://openai.com/index/openai-codex/)
 
 
 # Supported model
