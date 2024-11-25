@@ -1,17 +1,17 @@
-# Motivation
-* The Large language models (such as GPT, LLAMA, etc) have evolutionized the NPL
-* [llama.cpp](https://github.com/ggerganov/llama.cpp.git) has created by ggerganov in Pure C/C++. I might be applied on various platform (embedded device, cloud, ...)
-* This tool is created as an lightweight stuff make it simple to explore/research the capability of applying LLM model in various domain and various application.
+# Overview
+* Mimic and make a lightweight OpenAI API server endpoint to serve the text-generation service.
+* Make use of [llama.cpp](https://github.com/ggerganov/llama.cpp.git) library,created by ggerganov in Pure C/C++, for text-generation service. I might be applied on various platform (embedded device, cloud, mobile(android, iphone) ...)
+* A simple UI tool to explore/research the capability of text-generation service.
 
 # Note
 This is demonstration version, some issues or error checking is not fully validated.
 <br>
 Contact me via `avble.harry dot gmail.com` if any
 
-# Features
-* OpenAI API compatible server (chat and completion endpoint)
-* Simple Web UI for explore/debug
-* Currently, it only supports chat application
+# Tech-stack
+* A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
+* Text-generation: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
+* Web UI: Provide a simple web UI interface to explore/experiment
 
 ## A snapshot
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_3.JPG?raw=true)
@@ -28,12 +28,6 @@ docker run -p 8080:8080  harryavble/av_llm:latest
 ```
 
 Access to Web interface at http://127.0.0.1:8080
-
-# Tech-stack
-* OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
-* LLM Inference: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
-* Web UI: Provide a simple web UI interface to explore/experiment
-
 
 
 # Supported model
