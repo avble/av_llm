@@ -358,7 +358,6 @@ int main(int argc, char **argv)
     route_.get("/models", handle_models);
     route_.get("/v1/models", handle_models);
     route_.get("/v1/models/{model_name}", [](http::response res) {});
-    // completions: legacy
     route_.post("/completions", [](http::response res)
                 { std::thread{completions_handler, std::move(res)}.detach(); });
     route_.post("/v1/completions", [](http::response res)

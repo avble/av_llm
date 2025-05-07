@@ -8,7 +8,7 @@ It can be used, modified.
 template <typename... Args>
 static void avllm_Log(const char *format, Args... args)
 {
-    printf(format, args...);
+    // printf(format, args...);
 }
 
 template <typename... Args>
