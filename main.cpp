@@ -12,6 +12,7 @@ It can be used, modified.
 #include "av_connect.hpp"
 #include "helper.hpp"
 #include "log.hpp"
+#include "index.html.gz.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -346,12 +347,31 @@ int main(int argc, char **argv)
     route_.set_option_handler(preflight);
 
     // Web (yeap, I known it currently it reads from file each time!)
-    route_.get("/", handle_static_file("simplechat/index.html", "text/html; charset=utf-8"));
-    route_.get("/index.html", handle_static_file("simplechat/index.html", "text/html; charset=utf-8"));
-    route_.get("/datautils.mjs", handle_static_file("simplechat/datautils.mjs", "text/javascript; charset=utf-8"));
-    route_.get("/simplechat.css", handle_static_file("simplechat/simplechat.css", "text/css; charset=utf-8"));
-    route_.get("/simplechat.js", handle_static_file("simplechat/simplechat.js", "text/javascript"));
-    route_.get("/ui.mjs", handle_static_file("simplechat/ui.mjs", "text/javascript; charset=utf-8"));
+    // route_.get("/", handle_static_file("simplechat/index.html", "text/html; charset=utf-8"));
+    // route_.get("/index.html", handle_static_file("simplechat/index.html", "text/html; charset=utf-8"));
+    // route_.get("/datautils.mjs", handle_static_file("simplechat/datautils.mjs", "text/javascript; charset=utf-8"));
+    // route_.get("/simplechat.css", handle_static_file("simplechat/simplechat.css", "text/css; charset=utf-8"));
+    // route_.get("/simplechat.js", handle_static_file("simplechat/simplechat.js", "text/javascript"));
+    // route_.get("/ui.mjs", handle_static_file("simplechat/ui.mjs", "text/javascript; charset=utf-8"));
+
+
+    static auto web_handler = [&](http::response res) -> void
+    {
+
+        if (res.reqwest().get_header("accept-encoding").find("gzip") == std::string::npos) {
+            res.set_content("Error: gzip is not supported by this browser", "text/plain");
+        } else {
+            res.set_header("Content-Encoding", "gzip");
+            // COEP and COOP headers, required by pyodide (python interpreter)
+            res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
+            res.set_header("Cross-Origin-Opener-Policy", "same-origin");
+            res.set_content(reinterpret_cast<const char*>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
+            // res.set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
+        }
+        res.end();
+    };
+    route_.get("/", web_handler);
+    route_.get("/index.html", web_handler);
 
     // OpenAI API
     // model

@@ -8,11 +8,11 @@ FetchContent_Declare(
 
 
 
-# FetchContent_Declare(
-#     av_connect
-#     GIT_REPOSITORY https://github.com/avble/av_connect.git
-#     GIT_TAG        main
-# )
+FetchContent_Declare(
+    av_connect
+    GIT_REPOSITORY https://github.com/avble/av_connect.git
+    GIT_TAG        main
+)
 
 if(NOT llama_cpp_POPULATED)
   option(LLAMA_CURL "llama libcur" ON)
@@ -22,7 +22,9 @@ if(NOT llama_cpp_POPULATED)
   FetchContent_Populate(llama_cpp)
   add_subdirectory(${llama_cpp_SOURCE_DIR} ${llama_cpp_BINARY_DIR})
 endif()
-# if(NOT av_connect_POPULATED)
-#   FetchContent_Populate(av_connect)
-# endif()
+
+if(NOT av_connect_POPULATED)
+  FetchContent_Populate(av_connect)
+  add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
+endif()
 

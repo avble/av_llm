@@ -22,11 +22,6 @@ Obtain the latest container from [docker hub](https://hub.docker.com/)
 docker image pull harryavble/av_llm
 ```
 
-Run from docker
-``` shell
-docker run -p 8080:8080  harryavble/av_llm:latest
-```
-
 Access to Web interface at http://127.0.0.1:8080
 
 
@@ -59,12 +54,6 @@ Should work with below UI
 * Support more LLM models
 * Support more OpenAI API server
 * Support more application 
-
-# Appendix
-## More Snapshot
-![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_1.JPG?raw=true)
-<br>
-![demo-2](https://github.com/avble/av_llm/blob/main/image/demo_2.JPG?raw=true)
 
 
 # Reference
