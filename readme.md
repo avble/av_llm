@@ -18,6 +18,7 @@ Contact me via `avble.harry dot gmail.com` if any
 
 # Quick started
 Obtain the latest container from [docker hub](https://hub.docker.com/)
+** Currently, the docker build is quite outdated build ** 
 ``` shell
 docker image pull harryavble/av_llm
 ```
