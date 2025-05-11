@@ -69,7 +69,7 @@ export default function Header() {
         </svg>
       </label>
 
-      <div className="grow text-2xl font-bold ml-2">llama.cpp</div>
+      <div className="grow text-2xl font-bold ml-2">av-llm</div>
 
       {/* action buttons (top right) */}
       <div className="flex items-center">

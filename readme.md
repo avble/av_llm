@@ -14,7 +14,7 @@ Contact me via `avble.harry dot gmail.com` if any
 * Web UI: Provide a simple web UI interface to explore/experiment
 
 ## A snapshot
-![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_3.JPG?raw=true)
+![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.PNG?raw=true)
 
 # Quick started
 Obtain the latest container from [docker hub](https://hub.docker.com/)
