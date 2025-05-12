@@ -1,7 +1,5 @@
 # Overview
-* Mimic and make a lightweight OpenAI API server endpoint to serve the text-generation service.
-* Make use of [llama.cpp](https://github.com/ggerganov/llama.cpp.git) library,created by ggerganov in Pure C/C++, for text-generation service. I might be applied on various platform (embedded device, cloud, mobile(android, iphone) ...)
-* A simple UI tool to explore/research the capability of text-generation service.
+* Gen AI stuff
 
 # Tech-stack
 * A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
