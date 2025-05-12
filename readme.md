@@ -38,7 +38,10 @@ docker run -p 8080:8080 -v $your_host_model_folder:/work/model av_llm ./av_llm -
 ```
 
 # Compile and run
-T.B.D
+```
+$ cmake -B build && cmake --build build
+$ build/av_llm -m <path to gguf file>
+```
 
 # UI
 Should work with below UI
