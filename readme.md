@@ -3,11 +3,6 @@
 * Make use of [llama.cpp](https://github.com/ggerganov/llama.cpp.git) library,created by ggerganov in Pure C/C++, for text-generation service. I might be applied on various platform (embedded device, cloud, mobile(android, iphone) ...)
 * A simple UI tool to explore/research the capability of text-generation service.
 
-# Note
-This is demonstration version, some issues or error checking is not fully validated.
-<br>
-Contact me via `avble.harry dot gmail.com` if any
-
 # Tech-stack
 * A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
 * Text-generation: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
@@ -57,6 +52,10 @@ Should work with below UI
 * Support more OpenAI API server
 * Support more application 
 
+# Note
+This is demonstration version, some issues or error checking is not fully validated.
+<br>
+Contact me via `avble.harry dot gmail.com` if any
 
 # Reference
 * https://platform.openai.com/docs/api-reference/introduction
