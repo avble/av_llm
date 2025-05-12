@@ -11,13 +11,14 @@ Contact me via `avble.harry dot gmail.com` if any
 # Tech-stack
 * A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
 * Text-generation: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
-* Web UI: Provide a simple web UI interface to explore/experiment
+* Web UI: Provide a simple web UI interface to explore/experiment (borrowed from @llama.cpp project)
 
 ## A snapshot
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
 
 # Quick started
 Obtain the latest container from [docker hub](https://hub.docker.com/)
+
 ** Currently, the docker build is quite outdated build ** 
 ``` shell
 docker image pull harryavble/av_llm
