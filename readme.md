@@ -3,7 +3,7 @@
 
 # Tech-stack
 * A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
-* Text-generation: [llama.cp](https://github.com/ggerganov/llama.cpp.git)
+* LLM Inference engine: by [llama.cp](https://github.com/ggerganov/llama.cpp.git)
 * Web UI: Provide a simple web UI interface to explore/experiment (borrowed from @llama.cpp project)
 
 ## A snapshot
@@ -49,9 +49,7 @@ Should work with below UI
 * 
 
 # Future work
-* Support more LLM models
-* Support more OpenAI API server
-* Support more application 
+* Support more AI tasks 
 
 # Note
 This is demonstration version, some issues or error checking is not fully validated.
