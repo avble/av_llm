@@ -41,10 +41,9 @@ endforeach()
 set(TARGET av_llm)
 add_executable(${TARGET} ${TARGET_SRCS})
 
-# target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} ${av_connect_SOURCE_DIR}/example/libav_connect.a http_parser)
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
-# target_compile_features(${TARGET} PRIVATE cxx_std_17)
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 file(COPY simplechat DESTINATION  ${CMAKE_CURRENT_BINARY_DIR})
 
