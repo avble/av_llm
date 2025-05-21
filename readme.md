@@ -9,12 +9,10 @@
 ## A snapshot
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
 
-# Quick started
-Obtain the latest container from [docker hub](https://hub.docker.com/)
-
-** Currently, the docker build is quite outdated build ** 
-``` shell
-docker image pull harryavble/av_llm
+# Compile and run
+```
+$ cmake -B build && cmake --build build
+$ build/av_llm -m <path to gguf file>
 ```
 
 Access to Web interface at http://127.0.0.1:8080
@@ -35,12 +33,6 @@ This application is built on the top of [llama.cpp](https://github.com/ggerganov
 ``` cmd
 docker run -p 8080:8080 -v $your_host_model_folder:/work/model av_llm ./av_llm -m /work/model/$your_model_file
 
-```
-
-# Compile and run
-```
-$ cmake -B build && cmake --build build
-$ build/av_llm -m <path to gguf file>
 ```
 
 # UI
