@@ -36,24 +36,41 @@ static void print_usage(int, char **argv)
 int main(int argc, char **argv)
 {
 
-    common_params params;
-    params.prompt = "hello";
-    params.n_predict = 1024;
+    std::string model_path;
 
-    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage))
+    { // parsing the argument 
+        int i = 0;
+        for (int i = 1; i < argc; i++){
+            if (strcmp(argv[i], "-m") == 0){
+                if (i + 1 < argc){
+                    model_path = argv[++i];
+                }else {
+                    print_usage(1, argv);
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (model_path == "")
     {
-        fprintf(stderr, "%s: error in parsing the argument\n", __func__);
+        print_usage(1, argv);
         return 1;
     }
 
-    llama_model_params model_params = common_model_params_to_llama(params);
-    llama_model *model = llama_load_model_from_file(params.model.c_str(), model_params);
+    ggml_backend_load_all();
 
-    if (model == NULL)
+    llama_model_params model_params = llama_model_default_params();
+
+    llama_model *model = llama_load_model_from_file(model_path.c_str(), model_params);
+
+    if (model == nullptr)
     {
         fprintf(stderr, "%s: error: unable to load model\n", __func__);
         return 1;
     }
+
+    const llama_vocab * vocab = llama_model_get_vocab(model);
 
     // print the token as text to screen
     static auto model_print_token = [&](llama_model *model, std::vector<llama_token> &tokens)
@@ -61,7 +78,7 @@ int main(int argc, char **argv)
         for (auto token_ : tokens)
         {
             char buf[128];
-            int n = llama_token_to_piece(model, token_, buf, sizeof(buf), 0, true);
+            int n = llama_token_to_piece(vocab, token_, buf, sizeof(buf), 0, true);
             if (n < 0)
             {
                 fprintf(stderr, "%s: error: failed to convert token to piece\n", __func__);
@@ -79,15 +96,38 @@ int main(int argc, char **argv)
         llama_sampler *smpl;
     };
 
-    static auto model_context_init = [](llama_model *model, common_params &params) -> avllm_context_param
+    static auto model_context_init = [](llama_model *model, std::string &prompt) -> avllm_context_param
     {
-        llama_context_params ctx_params = common_context_params_to_llama(params);
-        ctx_params.no_perf = false;
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+        int n_predict = 32;
 
-        llama_context *ctx = llama_new_context_with_model(model, ctx_params);
-        if (ctx == NULL)
-        {
-            fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
+        const int n_prompt = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
+
+        llama_context_params ctx_params = llama_context_default_params();
+        ctx_params.no_perf = false;
+        ctx_params.n_ctx = n_prompt + n_predict - 1;
+        ctx_params.n_batch = n_prompt;
+    
+        // allocate space for the tokens and tokenize the prompt
+        std::vector<llama_token> prompt_tokens(n_prompt);
+        if (llama_tokenize(vocab, prompt.c_str(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0) {
+            fprintf(stderr, "%s: error: failed to tokenize the prompt\n", __func__);
+            return {.ctx = nullptr, .smpl = nullptr};
+        }
+        llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+
+        llama_context *ctx = llama_init_from_model(model, ctx_params);
+        {   // context initialization
+            if (ctx == NULL)
+            {
+                fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
+                return {.ctx = nullptr, .smpl = nullptr};
+            }
+        }
+
+        // evaluate the current batch with the transformer model
+        if (llama_decode(ctx, batch)) {
+            fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
             return {.ctx = nullptr, .smpl = nullptr};
         }
 
@@ -113,29 +153,9 @@ int main(int argc, char **argv)
         ctx.ctx = nullptr;
     };
 
-    static auto model_context_batch_decode = [](llama_model *model, llama_context *ctx, std::string data)
-    {
-        const int n_ins = -llama_tokenize(model, data.c_str(), data.size(), NULL, 0, true, true);
-        std::vector<llama_token> tokens(n_ins);
-        if (llama_tokenize(model, data.c_str(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
-        {
-            fprintf(stderr, "%s: error: failed to tokenize the ins\n", __func__);
-            return;
-        }
-
-        model_print_token(model, tokens);
-        std::cout << "\n";
-        llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
-
-        if (llama_decode(ctx, batch))
-        {
-            fprintf(stderr, "%s : failed to eval, return code %d\n", __func__, 1);
-            return;
-        }
-    };
-
     static auto model_context_get_text = [&](llama_model *model, const avllm_context_param &ctx, std::function<int(int rc, const std::string &text)> func_hdl, int max_token = 1024)
     {
+        const llama_vocab * vocab = llama_model_get_vocab(model);
         const auto t_main_start = ggml_time_us();
         llama_token new_token_id;
         int num_token = 0;
@@ -144,14 +164,14 @@ int main(int argc, char **argv)
             new_token_id = llama_sampler_sample(ctx.smpl, ctx.ctx, -1);
 
             // is it an end of generation?
-            if (llama_token_is_eog(model, new_token_id))
+            if (llama_token_is_eog(vocab, new_token_id))
             {
                 func_hdl(-1, "");
                 break;
             }
 
             char buf[128];
-            int n = llama_token_to_piece(model, new_token_id, buf, sizeof(buf), 0, true);
+            int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
             if (n < 0)
             {
                 fprintf(stderr, "%s: error: failed to convert token to piece\n", __func__);
@@ -175,12 +195,6 @@ int main(int argc, char **argv)
         }
     };
 
-    static auto model_context_token_get_num = [](llama_model *model, std::string data)
-    {
-        const int n_token = -llama_tokenize(model, data.c_str(), data.size(), NULL, 0, true, true);
-        return n_token;
-    };
-
     static auto completions_chat_handler = [&](http::response res) -> void
     {
         AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
@@ -201,14 +215,12 @@ int main(int argc, char **argv)
             }
         }
 
-        avllm_context_param avllm_ctx_ = model_context_init(model, params);
+        avllm_context_param avllm_ctx_ = model_context_init(model, prompt);
         if (avllm_ctx_.ctx == nullptr or avllm_ctx_.smpl == nullptr)
         {
             res.result() = http::status_code::internal_error;
             res.end();
         }
-
-        model_context_batch_decode(model, avllm_ctx_.ctx, prompt);
 
         res.event_source_start();
 
@@ -242,64 +254,6 @@ int main(int argc, char **argv)
 
         res.set_content(models.dump(), MIMETYPE_JSON);
         res.end();
-    };
-
-    static auto completions_handler = [&](http::response res) -> void
-    {
-        logger_function_trace_llamacpp __trace("", "completions_handler");
-
-        AVLLM_LOG_DEBUG("completions_handler received body: %s\n", res.reqwest().body().c_str());
-
-        json body_ = json::parse(res.reqwest().body());
-
-        // check if it is stream
-        bool is_stream = false;
-        if (body_.contains("stream"))
-        {
-            json js_stream = body_.at("stream");
-            if (not(js_stream.is_boolean() and js_stream.get<bool>() == true))
-            {
-                res.result() = http::status_code::internal_error;
-                res.end();
-            }
-            is_stream = true;
-        }
-
-        std::string prompt;
-        if (not(body_.contains("prompt") and body_.at("prompt").is_string()))
-        {
-            res.result() = http::status_code::internal_error;
-            res.end();
-        }
-        prompt = body_.at("prompt").get<std::string>();
-        AVLLM_LOG_DEBUG("prompt: %s\n", prompt.c_str());
-
-        avllm_context_param avllm_ctx_ = model_context_init(model, params);
-        if (avllm_ctx_.ctx == nullptr or avllm_ctx_.smpl == nullptr)
-        {
-            res.result() = http::status_code::internal_error;
-            res.end();
-            return;
-        }
-
-        model_context_batch_decode(model, avllm_ctx_.ctx, prompt);
-
-        // res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
-        res.event_source_start();
-
-        auto get_text_hdl = [&](int rc, const std::string &text) -> int
-        {
-            if (rc != 0)
-                res.chunk_write("data: " + oai_make_stream(text, false));
-
-            return 0;
-        };
-
-        model_context_get_text(model, avllm_ctx_, get_text_hdl);
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        res.chunk_end();
-        model_context_deinit(avllm_ctx_);
     };
 
     struct handle_static_file
@@ -379,9 +333,9 @@ int main(int argc, char **argv)
     route_.get("/v1/models", handle_models);
     route_.get("/v1/models/{model_name}", [](http::response res) {});
     route_.post("/completions", [](http::response res)
-                { std::thread{completions_handler, std::move(res)}.detach(); });
+                { std::thread{completions_chat_handler, std::move(res)}.detach(); });
     route_.post("/v1/completions", [](http::response res)
-                { std::thread{completions_handler, std::move(res)}.detach(); });
+                { std::thread{completions_chat_handler, std::move(res)}.detach(); });
     // chat
     route_.post("/chat/completions", [](http::response res)
                 { std::thread{completions_chat_handler, std::move(res)}.detach(); });

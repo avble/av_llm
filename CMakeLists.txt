@@ -9,12 +9,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(external.cmake)
 
-# add_subdirectory(av_connect)
-
-# find_package(PkgConfig)
-# pkg_check_modules(http_parser REQUIRED)
-# list(APPEND av_connect_dependent_libs  http_parser)
-
 set(TARGET_SRCS
     main.cpp
 )
@@ -34,7 +28,6 @@ foreach(asset ${PUBLIC_ASSETS})
     )
     set_source_files_properties(${output} PROPERTIES GENERATED TRUE)
 
-    message("DEBUG " ${input} ${output})
 endforeach()
 
 
@@ -47,4 +40,4 @@ target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 file(COPY simplechat DESTINATION  ${CMAKE_CURRENT_BINARY_DIR})
 
-# add_subdirectory(examples)
+add_subdirectory(example)
