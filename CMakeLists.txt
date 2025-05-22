@@ -40,4 +40,4 @@ target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 file(COPY simplechat DESTINATION  ${CMAKE_CURRENT_BINARY_DIR})
 
-add_subdirectory(example)
+# add_subdirectory(example)
