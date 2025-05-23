@@ -12,6 +12,9 @@
 
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
 
+## Webassembly 
+![In-browser](https://avble.github.io/wav_llm/) LLM inference
+
 # Compile and run
 
 ```
