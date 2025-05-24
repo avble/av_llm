@@ -65,3 +65,15 @@ Contact me via `avble.harry dot gmail.com` if any
 # Reference
 
 - https://platform.openai.com/docs/api-reference/introduction
+
+
+# Edge device framework
+## pytorch edge
+https://pytorch.org/executorch/stable/intro-how-it-works
+https://github.com/pytorch/executorch
+## tensorflow lite
+
+
+# Others
+https://dreampuf.github.io/GraphvizOnline
+https://github.com/lutzroeder/netron

@@ -15,6 +15,7 @@ This sample tool is insprised from llama.cpp (simple_chat)
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include <cstring>
 
 #include <inttypes.h>
 
