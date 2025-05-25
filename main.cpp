@@ -272,7 +272,41 @@ int main(int argc, char ** argv)
         AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
         AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_chat_handler", res.session_id());
 
-        if (true)
+        enum CHAT_TYPE
+        {
+            CHAT_TYPE_DEFAULT = 0,
+            CHAT_TYPE_STREAM  = 1
+        };
+
+        CHAT_TYPE chat_type = CHAT_TYPE_DEFAULT;
+
+        json body_;
+        json messages_js;
+        [&body_, &messages_js](const std::string & body) mutable {
+            try
+            {
+                body_       = json::parse(body);
+                messages_js = body_.at("messages");
+            } catch (const std::exception & ex)
+            {
+                body_       = {};
+                messages_js = {};
+            }
+        }(res.reqwest().body());
+
+        if (body_ == json() or messages_js == json())
+        {
+            res.result() = http::status_code::internal_error;
+            res.end();
+            return;
+        }
+
+        if (body_.contains("stream") and body_.at("stream").is_boolean() and body_["stream"].get<bool>() == true)
+        {
+            chat_type = CHAT_TYPE_STREAM;
+        }
+
+        if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
         {
             try
             {
@@ -296,9 +330,6 @@ int main(int argc, char ** argv)
 
             chat_session_t & chat_session = std::any_cast<chat_session_t &>(res.get_data());
 
-            json body_                 = json::parse(res.reqwest().body());
-            nlohmann::json messages_js = body_.at("messages");
-
             std::vector<llama_chat_message> chat_messages;
             std::string prompt;
 
@@ -314,19 +345,35 @@ int main(int argc, char ** argv)
                 }
             }
 
-            res.event_source_start();
+            if (chat_type == CHAT_TYPE_DEFAULT)
+            {
+                std::string res_body;
+                auto get_text_hdl = [&](int rc, const std::string & text) -> int {
+                    if (rc == 0)
+                        res_body = res_body + text;
 
-            auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                if (rc == 0)
-                    res.chunk_write("data: " + oai_make_stream(text));
+                    return 0;
+                };
+                chat_sesion_get(chat_session, chat_messages, get_text_hdl);
 
-                return 0;
-            };
+                res.set_content(res_body);
+                res.end();
+            }
+            else
+            {
+                res.event_source_start();
+                auto get_text_hdl = [&](int rc, const std::string & text) -> int {
+                    if (rc == 0)
+                        res.chunk_write("data: " + oai_make_stream(text));
 
-            chat_sesion_get(chat_session, chat_messages, get_text_hdl);
+                    return 0;
+                };
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            res.chunk_end();
+                chat_sesion_get(chat_session, chat_messages, get_text_hdl);
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                res.chunk_end();
+            }
         }
         else
         {
