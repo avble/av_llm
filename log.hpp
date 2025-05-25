@@ -6,19 +6,19 @@ It can be used, modified.
 // #include "av_connect.hpp"
 
 template <typename... Args>
-static void avllm_Log(const char *format, Args... args)
+static void avllm_Log(const char * format, Args... args)
 {
-    // printf(format, args...);
+    printf(format, args...);
 }
 
 template <typename... Args>
-static void AVLLM_LOG(const char *format, Args... args)
+static void AVLLM_LOG(const char * format, Args... args)
 {
     avllm_Log(format, args...);
 }
 
 template <typename... Args>
-static void llamacpp_log(log_level level, const char *format, Args... args)
+static void llamacpp_log(log_level level, const char * format, Args... args)
 {
     static log_level log_level_ = LOG_TRACE;
     if (level >= log_level_)
@@ -26,31 +26,31 @@ static void llamacpp_log(log_level level, const char *format, Args... args)
 }
 
 template <typename... Args>
-static void AVLLM_LOG_TRACE(const char *format, Args... args)
+static void AVLLM_LOG_TRACE(const char * format, Args... args)
 {
     llamacpp_log(LOG_TRACE, format, args...);
 }
 
 template <typename... Args>
-static void AVLLM_LOG_DEBUG(const char *format, Args... args)
+static void AVLLM_LOG_DEBUG(const char * format, Args... args)
 {
     llamacpp_log(LOG_DEBUG, format, args...);
 }
 
 template <typename... Args>
-static void AVLLM_LOG_INFO(const char *format, Args... args)
+static void AVLLM_LOG_INFO(const char * format, Args... args)
 {
     llamacpp_log(LOG_INFO, format, args...);
 }
 
 template <typename... Args>
-static void AVLLM_LOG_WARN(const char *format, Args... args)
+static void AVLLM_LOG_WARN(const char * format, Args... args)
 {
     llamacpp_log(LOG_WARN, format, args...);
 }
 
 template <typename... Args>
-static void AVLLM_LOG_ERROR(const char *format, Args... args)
+static void AVLLM_LOG_ERROR(const char * format, Args... args)
 {
     llamacpp_log(LOG_ERROR, format, args...);
 }
