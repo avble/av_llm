@@ -12,7 +12,8 @@
 
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
 
-## Webassembly 
+## Webassembly
+
 ![In-browser](https://avble.github.io/wav_llm/) LLM inference
 
 # Compile and run
@@ -66,14 +67,24 @@ Contact me via `avble.harry dot gmail.com` if any
 
 - https://platform.openai.com/docs/api-reference/introduction
 
-
 # Edge device framework
+
 ## pytorch edge
+
 https://pytorch.org/executorch/stable/intro-how-it-works
 https://github.com/pytorch/executorch
+
 ## tensorflow lite
 
+# Command line
+
+```shell
+# Run
+$ av_llm run
+
+```
 
 # Others
+
 https://dreampuf.github.io/GraphvizOnline
 https://github.com/lutzroeder/netron
