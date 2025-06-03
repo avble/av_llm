@@ -11,7 +11,7 @@ include(external.cmake)
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
 set(TARGET_SRCS
-    main.cpp
+    av_llm.cpp
 )
 
 set(PUBLIC_ASSETS
@@ -35,7 +35,7 @@ endforeach()
 set(TARGET av_llm)
 add_executable(${TARGET} ${TARGET_SRCS})
 
-target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
+target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl )
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 

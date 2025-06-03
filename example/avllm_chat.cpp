@@ -8,6 +8,7 @@ This sample tool is insprised from llama.cpp (simple_chat)
 #include "sampling.h"
 
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -15,7 +16,6 @@ This sample tool is insprised from llama.cpp (simple_chat)
 #include <stdexcept>
 #include <thread>
 #include <vector>
-#include <cstring>
 
 #include <inttypes.h>
 
@@ -28,6 +28,8 @@ static void print_usage(int, char ** argv)
 
 int main(int argc, char ** argv)
 {
+
+    // chat
 
     std::string model_path;
     int n_ctx = 2048;

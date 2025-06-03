@@ -20,7 +20,7 @@ static void AVLLM_LOG(const char * format, Args... args)
 template <typename... Args>
 static void llamacpp_log(log_level level, const char * format, Args... args)
 {
-    static log_level log_level_ = LOG_TRACE;
+    static log_level log_level_ = LOG_DEBUG;
     if (level >= log_level_)
         avllm_Log(format, args...);
 }

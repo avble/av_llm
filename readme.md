@@ -32,12 +32,12 @@ TBD
 
 | Model                      | ~GB     | Tags         | Linked                                                              | Remark |
 | -------------------------- | ------- | ------------ | ------------------------------------------------------------------- | ------ |
+| Devstral-Small-2505 (gguf) | 13 GB   | coding       | https://huggingface.co/mistralai/Devstral-Small-2505_gguf/tree/main |        |
 | Gema 2B                    | 10Gb    |              | https://huggingface.co/google/gemma-1.1-2b-it-GGUF/tree/main        |        |
 | Gemma-3 4b                 | 3.16GB  | general chat | https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/tree/main | v      |
 | Phi-4                      | > 3.5GB |              | https://huggingface.co/microsoft/phi-4-gguf/tree/main               | x      |
 | Phi-3 Inst                 | 2.2 GB  |              | https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf        | x      |
 | Binet                      | 1.19G   | general chat | https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/tree/main  | v      |
-| Devstral-Small-2505 (gguf) | 13 GB   | coding       | https://huggingface.co/mistralai/Devstral-Small-2505_gguf/tree/main | v      |
 | Qwen3-4B                   | ~3 Gb   | coding       | https://huggingface.co/Qwen/Qwen3-4B-GGUF                           | v      |
 |                            |         |              |                                                                     |        |
 
