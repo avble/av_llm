@@ -1,0 +1,56 @@
+---
+title: CLI
+description: av_llm cli.
+slug: /docs/cli
+---
+
+## usage
+
+```shell
+$ av_llm [command]
+$ av_llm [usage]
+```
+
+## Commands
+
+### chat
+
+start an interactive chat
+
+```
+$ av_llm chat <model_path>
+```
+
+### server
+
+start a server to serve the llm inference
+
+```
+$ av_llm server <model_path>
+```
+
+### model
+
+#### list
+
+```shell
+$ av_llm model ls
+
+```
+
+#### download
+
+```shell
+$ av_llm model download <model_path>
+```
+
+#### delete
+
+```shell
+$ av_llm model delete <model_path>
+```
+
+## flags
+
+- -h: show help
+- -v: show version
