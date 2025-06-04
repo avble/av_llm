@@ -12,11 +12,11 @@ FetchContent_Declare(
     GIT_TAG        1955993e
 )
 
-# FetchContent_Declare(
-#     av_connect
-#     GIT_REPOSITORY https://github.com/avble/av_connect.git
-#     GIT_TAG        fc58e2f 
-# )
+FetchContent_Declare(
+    av_connect
+    GIT_REPOSITORY https://github.com/avble/av_connect.git
+    GIT_TAG        dev-01
+)
 
 
 FetchContent_GetProperties(llama_cpp)
@@ -31,15 +31,15 @@ if(NOT llama_cpp_POPULATED)
   add_subdirectory(${llama_cpp_SOURCE_DIR} ${llama_cpp_BINARY_DIR})
 endif()
 
-# FetchContent_GetProperties(av_connect)
-# if(NOT av_connect_POPULATED)
-#   FetchContent_Populate(av_connect)
-#   option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
-#   add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
-# endif()
+FetchContent_GetProperties(av_connect)
+if(NOT av_connect_POPULATED)
+  FetchContent_Populate(av_connect)
+  option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
+  add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
+endif()
 
-option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
-add_subdirectory(av_connect)
+#option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
+#add_subdirectory(av_connect)
 
 FetchContent_Declare(
   curl
