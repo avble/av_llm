@@ -392,7 +392,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     return 0;
 };
 
-auto server_cmd_handler = [](std::string run_line) { // run server
+auto server_cmd_handler = [](std::string run_line) { // run serve
     std::string model_path;
     int srv_port = 8080;
 
@@ -808,22 +808,65 @@ auto server_cmd_handler = [](std::string run_line) { // run server
     llama_model_free(model);
 };
 
-std::unordered_map<std::string, std::string> pre_config_model = {
-    { "Qwen:Qwen2.5-Coder-3B-Instruct-GGUF",
-      "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf" },
-    { "Qwen:Qwen3-4B-GGUF", "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf" },
-    { "ggml-org:Qwen2.5-Coder-3B-Q8_0-GGUF",
-      "https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Q8_0-GGUF/resolve/main/qwen2.5-coder-3b-q8_0.gguf" }
-};
+std::unordered_map<std::string, std::string> pre_config_model;
+//  = {
+//     { "Qwen:Qwen2.5-Coder-3B-Instruct-GGUF",
+//       "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf" },
+//     { "Qwen:Qwen3-4B-GGUF", "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf" },
+//     { "ggml-org:Qwen2.5-Coder-3B-Q8_0-GGUF",
+//       "https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Q8_0-GGUF/resolve/main/qwen2.5-coder-3b-q8_0.gguf" }
+// };
+
+void pre_config_model_init()
+{
+    // Qwen model
+    pre_config_model["qween2.5-coder-3b"] =
+        "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf";
+
+    pre_config_model["qween2.5-coder-0.5b"] =
+        "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf";
+
+    pre_config_model["qween3-1.7b"] = "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf";
+
+    // tinyllama (error)
+    // pre_config_model["tinyllama-1.1b"] =
+    //     "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v0.2-GGUF/resolve/main/ggml-model-q4_0.gguf";
+
+    // gemma ()
+
+    // llama
+
+    // phi3
+    pre_config_model["phi-3-mini-4k"] =
+        "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf";
+}
 
 int main(int argc, char ** argv)
 {
 
-    home_path = std::getenv("HOME") ? std::filesystem::path(std::getenv("HOME")) : std::filesystem::path();
-    app_path  = home_path / ".av_llm";
+    {
+
+#ifdef _WIN32
+        home_path = std::getenv("USERPROFILE");
+        if (home_path.empty())
+            home_path = std::getenv("APPDATA"); // Fallback to APPDATA
+#else
+        home_path = std::getenv("HOME") ? std::filesystem::path(std::getenv("HOME")) : std::filesystem::path();
+#endif
+    }
+
+    if (home_path.empty())
+    {
+        AVLLM_LOG_ERROR("%s: \n", "could not find the homepath");
+        exit(1);
+    }
+
+    app_path = home_path / ".av_llm";
 
     for (int i = 0; i < argc; i++)
         AVLLM_LOG_DEBUG("[%03d]:%s\n", i, argv[i]);
+
+    pre_config_model_init();
 
     { // handle the syntax
         // $./av_llm <model-description>
@@ -874,7 +917,7 @@ int main(int argc, char ** argv)
     }
 
     {
-        const std::regex pattern(R"((server|chat|model)(.*))");
+        const std::regex pattern(R"((serve|chat|model)(.*))");
 
         // print each argument
         std::string line;
@@ -901,7 +944,7 @@ int main(int argc, char ** argv)
                 ltrim(cmd);
                 chat_cmd_handler(cmd);
             }
-            else if (command == "server")
+            else if (command == "serve")
             {
                 // check if argument is *.gguf
                 {

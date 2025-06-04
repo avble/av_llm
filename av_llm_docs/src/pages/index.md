@@ -6,14 +6,14 @@ slug: /docs/overview
 
 ## Installation
 
-- Or download from github
+- TBD (will download from github)
 
 ## Quick started
 
 ### start an interactive chat
 
 ```
-$ av_llm ggml-org:Qwen2.5-Coder-3B-Q8_0-GGUF
+$ av_llm qween3-1.7b
 ```
 
 OR
@@ -31,13 +31,13 @@ $ av_llm <url-path-to-your-gguf-file> // url for dowloaind gguf file
 ### start a server
 
 ```
-$ av_llm server ggml-org:Qwen2.5-Coder-3B-Q8_0-GGUF
+$ av_llm serve qween3-1.7b
 ```
 
 OR
 
 ```
-$ av_llm server <path-to-your-gguf-file>  // point to .gguf file
+$ av_llm serve <path-to-your-gguf-file>  // point to .gguf file
 ```
 
 #### Open WebUI
@@ -52,8 +52,9 @@ http://127.0.0.1:8080
 - can be the url to download .gguf file in huggingface
 - Or can be use the model name of following table, which is internally map to a url
 
-| Model Name                          | Quantization    |
-| ----------------------------------- | --------------- |
-| ggml-org:Qwen2.5-Coder-3B-Q8_0-GGUF | Q8              |
-| Qwen:Qwen2.5-Coder-3B-Instruct-GGUF | default: Q4_K_M |
-| Qwen:Qwen3-4B-GGUF                  | default: Q4_K_M |
+| Model Name          | Remarks |
+| ------------------- | ------- |
+| phi-3-mini-4k       |         |
+| qween3-1.7b         |         |
+| qween2.5-coder-0.5b |         |
+| qween2.5-coder-3b   |         |
