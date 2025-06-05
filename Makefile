@@ -1,49 +1,82 @@
 AV_LLM_VERSION = 0.0.1-beta
 UNAME_S := $(shell uname -s)
 
-all: package
-	@echo "Create the package"	
+# Define common paths
+BUILD_DIR = build
+STAGING_DIR = staging
+OUTPUT_DIR = output
+INSTALL_BIN_DIR = usr/local/bin
+INSTALL_CONFIG_DIR = usr/local/etc/.av_llm
+MODEL_FILE = qwen1_5-0_5b-chat-q8_0.gguf
+MODEL_URL = https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat-GGUF/resolve/main/$(MODEL_FILE)
 
+# Windows-specific variables
+ifeq ($(OS),Windows_NT)
+    INSTALL_BIN_DIR = bin
+    INSTALL_CONFIG_DIR = etc/.av_llm
+    RM = rmdir /s /q
+    MKDIR = mkdir
+    CP = xcopy /y /i
+    WGET = powershell -Command "Invoke-WebRequest -Uri '$(MODEL_URL)' -OutFile"
+else
+    RM = rm -rf
+    MKDIR = mkdir -p
+    CP = cp -rf
+    WGET = wget -O
+endif
+
+all: package
+	@echo "Create the package"
 
 compile:
-	mkdir -p build && cmake . -B build -DCMAKE_BUILD_TYPE=Release &&  cmake --build build
+	$(MKDIR) $(BUILD_DIR)
+	cmake . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(BUILD_DIR)
 
 package-prepare: compile
-	@mkdir -p staging/usr/local/bin
-	@mkdir -p staging/usr/local/etc/.av_llm
-	@cp -rf build/av_llm staging/usr/local/bin/
-	@if [ ! -f "staging/usr/local/etc/.av_llm/qwen1_5-0_5b-chat-q8_0.gguf" ]; then \
-		wget -O staging/usr/local/etc/.av_llm/qwen1_5-0_5b-chat-q8_0.gguf https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat-GGUF/resolve/main/qwen1_5-0_5b-chat-q8_0.gguf; \
+	$(MKDIR) $(STAGING_DIR)/$(INSTALL_BIN_DIR)
+	$(MKDIR) $(STAGING_DIR)/$(INSTALL_CONFIG_DIR)
+ifeq ($(OS),Windows_NT)
+	$(CP) $(BUILD_DIR)\av_llm.exe $(STAGING_DIR)\$(INSTALL_BIN_DIR)
+	if not exist "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)" \
+		$(WGET) "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)"
+else
+	$(CP) $(BUILD_DIR)/av_llm $(STAGING_DIR)/$(INSTALL_BIN_DIR)/
+	@if [ ! -f "$(STAGING_DIR)/$(INSTALL_CONFIG_DIR)/$(MODEL_FILE)" ]; then \
+		$(WGET) $(STAGING_DIR)/$(INSTALL_CONFIG_DIR)/$(MODEL_FILE) $(MODEL_URL); \
 	fi
+endif
+
 ifeq ($(UNAME_S), Linux)
-	@mkdir -p staging/DEBIAN
-	@cp scripts/control staging/DEBIAN/
+	$(MKDIR) $(STAGING_DIR)/DEBIAN
+	$(CP) scripts/control $(STAGING_DIR)/DEBIAN/
 endif
 
 package: package-prepare
-	mkdir -p output
-ifeq ($(UNAME_S), Darwin)
-	pkgbuild --root ./staging --identifier avble.llm.app --version 1.0 av_llm.pkg
-	productbuild --distribution ./scripts/Distribution.xml --package-path ./ output/av_llm-universal-installer-${AV_LLM_VERSION}.pkg && rm av_llm.pkg
+	$(MKDIR) $(OUTPUT_DIR)
+ifeq ($(OS),Windows_NT)
+	makensis /DVERSION=$(AV_LLM_VERSION) /DSTAGING_DIR=$(STAGING_DIR) scripts/installer.nsi
+	move scripts\av_llm-windows-installer-$(AV_LLM_VERSION).exe $(OUTPUT_DIR)
+else ifeq ($(UNAME_S), Darwin)
+	pkgbuild --root ./$(STAGING_DIR) --identifier avble.llm.app --version 1.0 av_llm.pkg
+	productbuild --distribution ./scripts/Distribution.xml --package-path ./ $(OUTPUT_DIR)/av_llm-universal-installer-$(AV_LLM_VERSION).pkg && rm av_llm.pkg
 else ifeq ($(UNAME_S), Linux)
-	dpkg-deb --build staging output/av_llm-linux-installer-${AV_LLM_VERSION}.deb
-else 
-	echo "windows build"
+	dpkg-deb --build $(STAGING_DIR) $(OUTPUT_DIR)/av_llm-linux-installer-$(AV_LLM_VERSION).deb
 endif
 
 package-clean:
-	rm -f ouput/*.pkg
+	$(RM) $(OUTPUT_DIR)
 
 clean:
-	rm -rf staging
-	cmake --build build --target clean
-	rm -f output/*.pkg
+	$(RM) $(STAGING_DIR)
+	cmake --build $(BUILD_DIR) --target clean
+	$(RM) $(OUTPUT_DIR)
 
 install-test:
-ifeq ($(UNAME_S), Darwin)
-	sudo installer -pkg output/av_llm-universal-installer-${AV_LLM_VERSION}.pkg -target /
+ifeq ($(OS),Windows_NT)
+	$(OUTPUT_DIR)\av_llm-windows-installer-$(AV_LLM_VERSION).exe /S
+else ifeq ($(UNAME_S), Darwin)
+	sudo installer -pkg $(OUTPUT_DIR)/av_llm-universal-installer-$(AV_LLM_VERSION).pkg -target /
 else ifeq ($(UNAME_S), Linux)
-	sudo dpkg -i output/av_llm-linux-installer-${AV_LLM_VERSION}.deb
-else 
-	echo "windows build"	
+	sudo dpkg -i $(OUTPUT_DIR)/av_llm-linux-installer-$(AV_LLM_VERSION).deb
 endif
