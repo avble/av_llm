@@ -834,6 +834,12 @@ int main(int argc, char ** argv)
     for (int i = 0; i < argc; i++)
         AVLLM_LOG_DEBUG("[%03d]:%s\n", i, argv[i]);
 
+    if (argc == 1)
+    {
+        AVLLM_LOG_ERROR("%s\n", "error systax. Please refer to manual");
+        exit(0);
+    }
+
     pre_config_model_init();
 
     { // handle the syntax
