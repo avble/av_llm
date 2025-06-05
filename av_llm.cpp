@@ -140,25 +140,50 @@ auto model_cmd_handler = [](std::string model_line) {
     };
 
     auto model_print_header = []() {
-        std::cout << std::left << std::setw(50) << "|Model path" << std::setw(1) << '|' << "Size" << '\n';
-        std::cout << std::string(58, '-') << '\n';
+        std::cout << std::left << std::setw(70) << "|Model path" << std::setw(1) << '|' << "Size" << '\n';
+        std::cout << std::string(78, '-') << '\n'; // Increased from 58 to 78 to match new width
     };
+
     auto model_print = [](const std::filesystem::path & model_path, const std::uintmax_t & size) {
-        std::cout << std::setw(50) << "|" + model_path.generic_string() << std::setw(1) << '|' << HumanReadable{ size } << "\n";
+        std::cout << std::setw(70) << "|" + model_path.generic_string() << std::setw(1) << '|' << HumanReadable{ size } << "\n";
     };
+
     auto model_print_footer = []() {
-        std::cout << std::string(57, '-') << std::endl; // flush
+        std::cout << std::string(77, '-') << std::endl; // Increased from 57 to 77 to match new width
     };
 
     auto model_ls = [&model_print_header, &model_print, &model_print_footer]() {
+        std::vector<std::filesystem::path> search_paths = {
+            app_path,                                       // ~/.av_llm
+            std::filesystem::path("/usr/local/etc/.av_llm") // /usr/local/etc/.av_llm
+        };
+
         model_print_header();
-        for (const auto & entry : std::filesystem::directory_iterator(app_path))
+
+        for (const auto & search_path : search_paths)
         {
-            if (entry.is_regular_file())
+            if (std::filesystem::exists(search_path))
             {
-                model_print(std::filesystem::path("~/.av_llm/") / entry.path().filename(), entry.file_size());
+                for (const auto & entry : std::filesystem::directory_iterator(search_path))
+                {
+                    if (entry.is_regular_file() && entry.path().extension() == ".gguf")
+                    {
+                        // Format the displayed path based on which directory it's from
+                        std::filesystem::path display_path;
+                        if (search_path == app_path)
+                        {
+                            display_path = std::filesystem::path("~/.av_llm") / entry.path().filename();
+                        }
+                        else
+                        {
+                            display_path = entry.path(); // Show full path for system directory
+                        }
+                        model_print(display_path, entry.file_size());
+                    }
+                }
             }
         }
+
         model_print_footer();
     };
 
@@ -204,14 +229,47 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
 
     std::smatch smatch_;
 
+    // if (std::regex_match(model_line, smatch_, chat_pattern))
+    // {
+    //     if (std::filesystem::is_regular_file(std::filesystem::path(smatch_[1])))
+    //         model_path = smatch_[1];
+    //     else
+    //         model_path = app_path / std::string(smatch_[1]);
+    // }
+
     if (std::regex_match(model_line, smatch_, chat_pattern))
     {
-        if (std::filesystem::is_regular_file(std::filesystem::path(smatch_[1])))
-            model_path = smatch_[1];
+        // Step 1: Check if smatch_[1] is regular .gguf file (absolute or relative to current dir)
+        std::filesystem::path input_path = std::string(smatch_[1]);
+        if (std::filesystem::is_regular_file(input_path) && input_path.extension() == ".gguf")
+        {
+            model_path = input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from direct path: %s\n", __func__, model_path.c_str());
+        }
+        // Step 2: Check in app_path (~/av_llm/)
+        else if (std::filesystem::is_regular_file(app_path / input_path) && (app_path / input_path).extension() == ".gguf")
+        {
+            model_path = app_path / input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from user directory: %s\n", __func__, model_path.c_str());
+        }
+        // Step 3: Check in /usr/local/etc/.av_llm/
+        else if (std::filesystem::is_regular_file(std::filesystem::path("/usr/local/etc/.av_llm") / input_path) &&
+                 (std::filesystem::path("/usr/local/etc/.av_llm") / input_path).extension() == ".gguf")
+        {
+            model_path = std::filesystem::path("/usr/local/etc/.av_llm") / input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from system directory: %s\n", __func__, model_path.c_str());
+        }
         else
-            model_path = app_path / std::string(smatch_[1]);
+        {
+            AVLLM_LOG_ERROR("%s: Could not find valid .gguf model file: %s\n", __func__, input_path.c_str());
+            return -1;
+        }
     }
-
+    else
+    {
+        AVLLM_LOG_ERROR("%s: Invalid model path format\n", __func__);
+        return -1;
+    }
     ggml_backend_load_all();
 
     // model initialized
