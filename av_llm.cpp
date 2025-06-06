@@ -136,6 +136,10 @@ auto model_cmd_handler = [](std::string model_line) {
             AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
             curl_easy_cleanup(curl);
         }
+        else
+        {
+            AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
+        }
         curl_global_cleanup();
     };
 
@@ -194,7 +198,7 @@ auto model_cmd_handler = [](std::string model_line) {
     std::smatch smatch_;
     if (std::regex_match(model_line, smatch_, model_pattern))
     {
-        // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
+        AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
         std::string sub_cmd = smatch_[1];
         // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, sub_cmd.c_str());
         std::string model_path = smatch_[2];
@@ -451,7 +455,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     return 0;
 };
 
-auto server_cmd_handler = [](std::string run_line) { // run serve
+auto server_cmd_handler = [](std::string run_line) -> int { // run serve
     std::string model_path;
     int srv_port = 8080;
 
@@ -865,6 +869,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     LOG("\n");
 
     llama_model_free(model);
+    return 0;
 };
 
 int main(int argc, char ** argv)
@@ -900,28 +905,35 @@ int main(int argc, char ** argv)
 
     pre_config_model_init();
 
-    { // handle the syntax
+    auto chat_cmd_caller = [](std::string model_description) -> int { // handle the syntax
         // $./av_llm <model-description>
         // which is alias to $./av_llm chat
 
         {
             // handle if the argv[1] is *.guff
-            std::filesystem::path model_path = argv[1];
-            if (model_path.extension() == ".gguf" and
-                (std::filesystem::is_regular_file(model_path) or std::filesystem::is_regular_file(app_path / model_path)))
+            std::filesystem::path model_filename = model_description;
+            if (model_filename.extension() == ".gguf")
             {
-                chat_cmd_handler(model_path);
+
+                std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
+                    : std::filesystem::is_regular_file(app_path / model_filename)
+                    ? std::optional<std::filesystem::path>(app_path / model_filename)
+                    : std::nullopt;
+
+                if (!model_path.has_value())
+                    chat_cmd_handler(model_path.value());
+
                 return 0;
             }
         }
 
         {
             // handle precofig model
-            if (pre_config_model.find(argv[1]) != pre_config_model.end())
+            if (pre_config_model.find(model_description) != pre_config_model.end())
             {
-                std::string url = pre_config_model[argv[1]];
+                std::string url = pre_config_model[model_description];
 
-                AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, url.c_str());
+                AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
 
                 auto last_slash = url.find_last_of("/");
                 if (last_slash != std::string::npos)
@@ -930,14 +942,19 @@ int main(int argc, char ** argv)
 
                     AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, model_filename.c_str());
 
-                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename)
-                        ? model_filename
-                        : std::filesystem::is_regular_file(app_path / model_filename)
+                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(app_path / model_filename)
                         ? std::optional<std::filesystem::path>(app_path / model_filename)
                         : std::nullopt;
 
                     if (!model_path.has_value())
+                    {
+                        AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
+                                        model_filename.generic_string().c_str(), url.c_str());
                         model_cmd_handler("pull " + url);
+                    }
+                    else
+                        AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
+                                        model_path.value().generic_string().c_str());
 
                     chat_cmd_handler((app_path / model_filename).generic_string());
                 }
@@ -946,16 +963,24 @@ int main(int argc, char ** argv)
         }
         { // todo: handle the descrition (http://)
         }
+
+        return 0;
+    };
+
+    // print each argument
+    std::string line;
+    for (int i = 1; i < argc; i++)
+        line += ((i == 1 ? "" : " ") + std::string(argv[i]));
+
+    {
+        const std::regex pattern(R"((serve|chat|model)(.*))");
+        std::smatch match;
+        if (!std::regex_match(line, match, pattern))
+            chat_cmd_caller(argv[1]);
     }
 
     {
         const std::regex pattern(R"((serve|chat|model)(.*))");
-
-        // print each argument
-        std::string line;
-        for (int i = 1; i < argc; i++)
-            line += ((i == 1 ? "" : " ") + std::string(argv[i]));
-
         std::smatch match;
         if (std::regex_match(line, match, pattern))
         {
@@ -972,9 +997,11 @@ int main(int argc, char ** argv)
             }
             else if (command == "chat")
             {
-                std::string cmd = match[2];
-                ltrim(cmd);
-                chat_cmd_handler(cmd);
+                std::string model_desc = match[2];
+                ltrim(model_desc);
+                // chat_cmd_handler(cmd);
+                AVLLM_LOG_DEBUG("%s:%d - chat with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
+                chat_cmd_caller(model_desc);
             }
             else if (command == "serve")
             {
