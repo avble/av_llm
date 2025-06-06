@@ -44,10 +44,18 @@ static void print_usage(int, char ** argv)
     AVLLM_LOG_INFO("%s", "\n");
 }
 
+// common utils
+static auto ltrim = [](std::string & str) {
+    int i = 0;
+    while (i < str.size() && std::isspace(static_cast<unsigned char>(str[i])))
+        i++;
+    str.erase(0, i);
+};
+
+// curl helper function
 static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
 {
     std::ofstream * of = static_cast<std::ofstream *>(stream);
-
     try
     {
         of->write((const char *) ptr, size * nmemb);
@@ -74,14 +82,62 @@ int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, 
     return 0; // return non-zero to abort transfer
 }
 
-// remove leading space
-static auto ltrim = [](std::string & str) {
-    int i = 0;
-    while (i < str.size() && std::isspace(static_cast<unsigned char>(str[i])))
-        i++;
-    str.erase(0, i);
+// model utils
+auto model_pull = [](std::string url) {
+    AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
+    CURL * curl;
+    CURLcode res;
+
+    std::string outfilename = [](const std::string & url) -> std::string {
+        auto last_slash = url.find_last_of('/');
+        if (last_slash == std::string::npos)
+            return url;
+        return url.substr(last_slash + 1);
+    }(url);
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if (curl)
+    {
+
+        auto file_path = app_path / outfilename;
+        // open a file
+        std::ofstream of(file_path.c_str());
+
+        if (of.is_open())
+        {
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
+            // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+
+            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+
+            // Set progress callback
+            curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+            curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
+
+            // follow redirect
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+            res = curl_easy_perform(curl);
+            if (res != CURLE_OK)
+                AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+
+            of.close();
+        }
+
+        AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
+        curl_easy_cleanup(curl);
+    }
+    else
+    {
+        AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
+    }
+    curl_global_cleanup();
 };
 
+// CLI handlers
 auto model_cmd_handler = [](std::string model_line) {
     std::filesystem::create_directories(app_path);
 
@@ -92,55 +148,6 @@ auto model_cmd_handler = [](std::string model_line) {
             return url;
 
         return url.substr(last_slash + 1);
-    };
-
-    auto model_pull = [](std::string url) {
-        AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
-        CURL * curl;
-        CURLcode res;
-
-        std::string outfilename = get_file_name_from_url(url);
-
-        curl_global_init(CURL_GLOBAL_DEFAULT);
-        curl = curl_easy_init();
-        if (curl)
-        {
-
-            auto file_path = app_path / outfilename;
-            // open a file
-            std::ofstream of(file_path.c_str());
-
-            if (of.is_open())
-            {
-                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
-                // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-
-                curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-
-                // Set progress callback
-                curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
-                curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
-
-                // follow redirect
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-                res = curl_easy_perform(curl);
-                if (res != CURLE_OK)
-                    AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-
-                of.close();
-            }
-
-            AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
-            curl_easy_cleanup(curl);
-        }
-        else
-        {
-            AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
-        }
-        curl_global_cleanup();
     };
 
     auto model_print_header = []() {
@@ -232,14 +239,6 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     std::regex chat_pattern(R"(([^\s]+)(.*))");
 
     std::smatch smatch_;
-
-    // if (std::regex_match(model_line, smatch_, chat_pattern))
-    // {
-    //     if (std::filesystem::is_regular_file(std::filesystem::path(smatch_[1])))
-    //         model_path = smatch_[1];
-    //     else
-    //         model_path = app_path / std::string(smatch_[1]);
-    // }
 
     if (std::regex_match(model_line, smatch_, chat_pattern))
     {
@@ -951,7 +950,7 @@ int main(int argc, char ** argv)
                     {
                         AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
                                         model_filename.generic_string().c_str(), url.c_str());
-                        chat_or_serve_func("pull " + url);
+                        model_pull(url);
                     }
                     else
                         AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
