@@ -905,7 +905,8 @@ int main(int argc, char ** argv)
 
     pre_config_model_init();
 
-    auto chat_cmd_caller = [](std::string model_description) -> int { // handle the syntax
+    auto chat_serve_caller = [](std::string model_description,
+                                std::function<int(std::string)> chat_or_serve_func) -> int { // handle the syntax
         // $./av_llm <model-description>
         // which is alias to $./av_llm chat
 
@@ -921,7 +922,7 @@ int main(int argc, char ** argv)
                     : std::nullopt;
 
                 if (!model_path.has_value())
-                    chat_cmd_handler(model_path.value());
+                    chat_or_serve_func(model_path.value());
 
                 return 0;
             }
@@ -950,13 +951,13 @@ int main(int argc, char ** argv)
                     {
                         AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
                                         model_filename.generic_string().c_str(), url.c_str());
-                        model_cmd_handler("pull " + url);
+                        chat_or_serve_func("pull " + url);
                     }
                     else
                         AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
                                         model_path.value().generic_string().c_str());
 
-                    chat_cmd_handler((app_path / model_filename).generic_string());
+                    chat_or_serve_func((app_path / model_filename).generic_string());
                 }
                 return 0;
             }
@@ -976,7 +977,7 @@ int main(int argc, char ** argv)
         const std::regex pattern(R"((serve|chat|model)(.*))");
         std::smatch match;
         if (!std::regex_match(line, match, pattern))
-            chat_cmd_caller(argv[1]);
+            chat_serve_caller(argv[1], chat_cmd_handler);
     }
 
     {
@@ -1001,10 +1002,16 @@ int main(int argc, char ** argv)
                 ltrim(model_desc);
                 // chat_cmd_handler(cmd);
                 AVLLM_LOG_DEBUG("%s:%d - chat with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
-                chat_cmd_caller(model_desc);
+                chat_serve_caller(model_desc, chat_cmd_handler);
             }
             else if (command == "serve")
             {
+                std::string model_desc = match[2];
+                ltrim(model_desc);
+                // chat_cmd_handler(cmd);
+                AVLLM_LOG_DEBUG("%s:%d - server with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
+                chat_serve_caller(model_desc, server_cmd_handler);
+#if 0                
                 // check if argument is *.gguf
                 {
                     AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
@@ -1060,6 +1067,7 @@ int main(int argc, char ** argv)
                     }
                 }
 
+#endif
                 {
                     AVLLM_LOG_ERROR("%s:%d \n", "args", __LINE__);
                 }
