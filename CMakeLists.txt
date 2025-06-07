@@ -37,10 +37,13 @@ foreach(asset ${PUBLIC_ASSETS})
 
 endforeach()
 
-
-
 set(TARGET av_llm)
 add_executable(${TARGET} ${TARGET_SRCS})
+
+if(MSVC)
+    target_compile_options(${TARGET} PRIVATE /bigobj)
+    add_compile_options(/std:c++17)
+endif()
 
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl )
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
@@ -48,7 +51,7 @@ target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 file(COPY simplechat DESTINATION  ${CMAKE_CURRENT_BINARY_DIR})
 
-add_subdirectory(example)
+#add_subdirectory(example)
 
 if (AV_LLM_BUILD_TEST STREQUAL "ON")
     add_subdirectory(test)

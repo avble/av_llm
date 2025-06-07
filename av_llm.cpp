@@ -31,6 +31,10 @@ It can be used, modified.
 #include <curl/curl.h>
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#include <ciso646>
+#endif
+
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
 
@@ -279,7 +283,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     llama_model * model = [&model_path]() -> llama_model * {
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers       = 99;
-        return llama_model_load_from_file(model_path.c_str(), model_params);
+        return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
     }();
     if (model == nullptr)
     {
@@ -454,7 +458,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     return 0;
 };
 
-auto server_cmd_handler = [](std::string run_line) -> int { // run serve
+auto server_cmd_handler = [](std::string run_line) { // run serve
     std::string model_path;
     int srv_port = 8080;
 
@@ -921,7 +925,7 @@ int main(int argc, char ** argv)
                     : std::nullopt;
 
                 if (!model_path.has_value())
-                    chat_or_serve_func(model_path.value());
+                    chat_or_serve_func(model_path.value().generic_string());
 
                 return 0;
             }
