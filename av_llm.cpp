@@ -37,7 +37,6 @@ It can be used, modified.
 
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
-
 std::filesystem::path home_path;
 std::filesystem::path app_path;
 
@@ -110,6 +109,9 @@ auto model_pull = [](std::string url) {
 
         if (of.is_open())
         {
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
             curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
@@ -205,8 +207,9 @@ auto model_cmd_handler = [](std::string model_line) {
     auto model_del = [](std::string model_name) { std::filesystem::remove(app_path / model_name); };
 
     std::regex model_pattern(R"((pull|del|ls)(.*))");
-
     std::smatch smatch_;
+
+
     if (std::regex_match(model_line, smatch_, model_pattern))
     {
         AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
@@ -439,7 +442,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
             }
 
             std::string out(buf, n);
-            AVLLM_LOG("%s", out.c_str());
+            printf("%s", out.c_str());
             fflush(stdout);
 
             batch = llama_batch_get_one(&new_token, 1);
@@ -915,17 +918,22 @@ int main(int argc, char ** argv)
 
         {
             // handle if the argv[1] is *.guff
+            AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_description.c_str());
             std::filesystem::path model_filename = model_description;
             if (model_filename.extension() == ".gguf")
             {
+                AVLLM_LOG_DEBUG("%s:%d - %s:%s \n", __func__, __LINE__, app_path.generic_string().c_str(), model_filename.c_str());
 
                 std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
                     : std::filesystem::is_regular_file(app_path / model_filename)
                     ? std::optional<std::filesystem::path>(app_path / model_filename)
                     : std::nullopt;
 
-                if (!model_path.has_value())
+                if (model_path.has_value()){
+                    AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_path.value().generic_string().c_str());
                     chat_or_serve_func(model_path.value().generic_string());
+                }
+                AVLLM_LOG_DEBUG("%s:%d \n", __func__, __LINE__);
 
                 return 0;
             }
@@ -950,7 +958,7 @@ int main(int argc, char ** argv)
                         ? std::optional<std::filesystem::path>(app_path / model_filename)
                         : std::nullopt;
 
-                    if (!model_path.has_value())
+                    if (not model_path.has_value())
                     {
                         AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
                                         model_filename.generic_string().c_str(), url.c_str());
@@ -1014,66 +1022,6 @@ int main(int argc, char ** argv)
                 // chat_cmd_handler(cmd);
                 AVLLM_LOG_DEBUG("%s:%d - server with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
                 chat_serve_caller(model_desc, server_cmd_handler);
-#if 0                
-                // check if argument is *.gguf
-                {
-                    AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
-                    std::string arg = match[2];
-                    ltrim(arg);
-                    std::filesystem::path path = arg;
-                    if (path.extension() == ".gguf")
-                    {
-                        AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
-                        if (std::filesystem::is_regular_file(path)) // or std::filesystem::is_regular_file(app_path / path)))
-                        {
-                            server_cmd_handler(path.generic_string());
-                        }
-                        else if (std::filesystem::is_regular_file(app_path / path))
-                        {
-                            server_cmd_handler((app_path / path).generic_string());
-                        }
-                        return 0;
-                    }
-                }
-
-                // check if preconfigured model
-                {
-                    std::string arg = match[2];
-                    ltrim(arg);
-                    AVLLM_LOG_DEBUG("%s:%d info: %s \n", __func__, __LINE__, arg.c_str());
-                    if (pre_config_model.find(arg) != pre_config_model.end())
-                    {
-                        AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
-                        std::string url = pre_config_model[arg];
-
-                        AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, url.c_str());
-
-                        auto last_slash = url.find_last_of("/");
-                        if (last_slash != std::string::npos)
-                        {
-                            std::filesystem::path model_filename = url.substr(last_slash + 1);
-
-                            AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, model_filename.c_str());
-
-                            std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename)
-                                ? model_filename
-                                : std::filesystem::is_regular_file(app_path / model_filename)
-                                ? std::optional<std::filesystem::path>(app_path / model_filename)
-                                : std::nullopt;
-
-                            if (!model_path.has_value())
-                                model_cmd_handler("pull " + url);
-
-                            server_cmd_handler((app_path / model_filename).generic_string());
-                        }
-                        return 0;
-                    }
-                }
-
-#endif
-                {
-                    AVLLM_LOG_ERROR("%s:%d \n", "args", __LINE__);
-                }
             }
             else
                 AVLLM_LOG_ERROR("%s:%d \n", "args", __LINE__);

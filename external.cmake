@@ -18,19 +18,6 @@ FetchContent_Declare(
     GIT_TAG        dev-01
 )
 
-
-# FetchContent_Declare(
-#     wolfssl
-#     GIT_REPOSITORY https://github.com/wolfSSL/wolfssl.git
-#     GIT_TAG        v5.8.0-stable
-# )
-
-# FetchContent_GetProperties(wolfssl)
-# if(NOT wolfssl_POPULATED)
-#   FetchContent_Populate(wolfssl)
-#   add_subdirectory(${wolfssl_SOURCE_DIR} ${wolfssl_BINARY_DIR})
-# endif()
-
 FetchContent_Declare(
   curl
   GIT_REPOSITORY https://github.com/curl/curl.git
@@ -57,16 +44,26 @@ if(NOT av_connect_POPULATED)
   add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
 endif()
 
-#option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
-#add_subdirectory(av_connect)
+FetchContent_Declare(
+  mbedtls
+  GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
+  GIT_TAG v3.6.3
+)
 
+set(ENABLE_PROGRAMS OFF CACHE BOOL "Disable mbedTLS example programs")
+set(ENABLE_TESTING OFF CACHE BOOL "Disable mbedTLS tests")
+set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "Avoid compiler warnings as errors")
+set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build static mbedTLS")
 
-# FetchContent_GetProperties(wolfssl)
-# if(NOT wolfssl_POPULATED)
-#   FetchContent_Populate(wolfssl)
-#   add_subdirectory(${wolfssl_SOURCE_DIR} ${wolfssl_BINARY_DIR})
-# endif()
+FetchContent_MakeAvailable(mbedtls)
+set(MBEDTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include" "${mbedtls_BINARY_DIR}")
+set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
 
+set(MBEDTLS_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedtls.lib" CACHE FILEPATH "" FORCE)
+set(MBEDX509_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedx509.lib" CACHE FILEPATH "" FORCE)
+set(MBEDCRYPTO_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedcrypto.lib" CACHE FILEPATH "" FORCE)
+
+message("DEBUG " ${MBEDTLS_LIBRARY} )
 
 FetchContent_GetProperties(curl)
 if(NOT curl_POPULATED)
@@ -92,8 +89,12 @@ if(NOT curl_POPULATED)
   option(CURL_DISABLE_TFTP "curl disable CURL_DISABLE_TFTP" ON)
   option(CURL_DISABLE_WEBSOCKETS "curl disable CURL_DISABLE_WEBSOCKETS" ON)
   option(CURL_USE_LIBPSL "curl disable CURL_USE_LIBPSL" OFF) 
-  option(BUILD_STATIC_CURL "curl build static lib" ON)  
+  # option(BUILD_STATIC_CURL "curl build static lib" ON)  
+  set(CURL_USE_MBEDTLS TRUE CACHE BOOL "" FORCE)
   # option(CURL_USE_LIBSSH2 "curl CURL_USE_LIBSSH2" OFF)
+  execute_process(COMMAND git submodule update --init --recursive
+      WORKING_DIRECTORY ${curl_SOURCE_DIR}
+  )
   add_subdirectory(${curl_SOURCE_DIR} ${curl_BINARY_DIR})
 endif()
 
