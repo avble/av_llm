@@ -51,7 +51,7 @@ target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 file(COPY simplechat DESTINATION  ${CMAKE_CURRENT_BINARY_DIR})
 
-#add_subdirectory(example)
+add_subdirectory(example)
 
 if (AV_LLM_BUILD_TEST STREQUAL "ON")
     add_subdirectory(test)

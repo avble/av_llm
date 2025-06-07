@@ -1,17 +1,31 @@
-cmake_minimum_required(VERSION 3.16)
-
+cmake_minimum_required(VERSION 3.24)
 project(av_simple
         LANGUAGES CXX C)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(MSVC)
+    add_compile_options(/std:c++17)
+endif()
 
 function(add_llm_example name)
         add_executable(${name} ${name}.cpp)
         target_link_libraries(${name} PUBLIC llama common)
 endfunction()
 
+
+
 add_llm_example(avllm_gen)
+add_llm_example(avllm_simple)
 add_llm_example(avllm_chat)
 add_llm_example(avllm_server)
+
+if(MSVC)
+    target_compile_options(avllm_gen PRIVATE /bigobj)
+    target_compile_options(avllm_chat PRIVATE /bigobj)
+    target_compile_options(avllm_server PRIVATE /bigobj)
+endif()
 
 set(PUBLIC_ASSETS
     ../index.html.gz

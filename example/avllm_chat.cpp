@@ -19,12 +19,17 @@ This sample tool is insprised from llama.cpp (simple_chat)
 
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#include <ciso646>
+#endif
+
 static void print_usage(int, char ** argv)
 {
     printf("\nexample usage:\n");
     printf("\n    %s -m model.gguf [-c ctx]\n", argv[0]);
     printf("\n");
 }
+
 
 int main(int argc, char ** argv)
 {

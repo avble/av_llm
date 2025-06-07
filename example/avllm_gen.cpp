@@ -19,6 +19,10 @@ This sample tool is insprised from llama.cpp (simple)
 
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#include <ciso646>
+#endif
+
 static void print_usage(int, char ** argv)
 {
     printf("\nexample usage:\n");

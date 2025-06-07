@@ -40,7 +40,7 @@ endif()
 FetchContent_GetProperties(av_connect)
 if(NOT av_connect_POPULATED)
   FetchContent_Populate(av_connect)
-  option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
+  option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" OFF)
   add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
 endif()
 
