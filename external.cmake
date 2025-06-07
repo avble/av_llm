@@ -19,10 +19,29 @@ FetchContent_Declare(
 )
 
 
+# FetchContent_Declare(
+#     wolfssl
+#     GIT_REPOSITORY https://github.com/wolfSSL/wolfssl.git
+#     GIT_TAG        v5.8.0-stable
+# )
+
+# FetchContent_GetProperties(wolfssl)
+# if(NOT wolfssl_POPULATED)
+#   FetchContent_Populate(wolfssl)
+#   add_subdirectory(${wolfssl_SOURCE_DIR} ${wolfssl_BINARY_DIR})
+# endif()
+
+FetchContent_Declare(
+  curl
+  GIT_REPOSITORY https://github.com/curl/curl.git
+  GIT_TAG        curl-8_14_0
+)
+
 FetchContent_GetProperties(llama_cpp)
 if(NOT llama_cpp_POPULATED)
   FetchContent_Populate(llama_cpp)
   set(GGML_AMX OFF)
+  set(GGML_BLAS OFF)
   option(LLAMA_CURL "llama libcur" OFF)
   option(LLAMA_BUILD_SERVER "llama server" OFF)
   option(LLAMA_BUILD_EXAMPLES "llama example" OFF)
@@ -41,11 +60,13 @@ endif()
 #option(AV_CONNECT_BUILD_EXAMPLES "av_connect: Build examples" ON)
 #add_subdirectory(av_connect)
 
-FetchContent_Declare(
-  curl
-  GIT_REPOSITORY https://github.com/curl/curl.git
-  GIT_TAG        curl-8_14_0
-)
+
+# FetchContent_GetProperties(wolfssl)
+# if(NOT wolfssl_POPULATED)
+#   FetchContent_Populate(wolfssl)
+#   add_subdirectory(${wolfssl_SOURCE_DIR} ${wolfssl_BINARY_DIR})
+# endif()
+
 
 FetchContent_GetProperties(curl)
 if(NOT curl_POPULATED)
@@ -71,7 +92,8 @@ if(NOT curl_POPULATED)
   option(CURL_DISABLE_TFTP "curl disable CURL_DISABLE_TFTP" ON)
   option(CURL_DISABLE_WEBSOCKETS "curl disable CURL_DISABLE_WEBSOCKETS" ON)
   option(CURL_USE_LIBPSL "curl disable CURL_USE_LIBPSL" OFF) 
-  option(BUILD_STATIC_CURL "curl build static lib" ON)
+  option(BUILD_STATIC_CURL "curl build static lib" ON)  
+  # option(CURL_USE_LIBSSH2 "curl CURL_USE_LIBSSH2" OFF)
   add_subdirectory(${curl_SOURCE_DIR} ${curl_BINARY_DIR})
 endif()
 

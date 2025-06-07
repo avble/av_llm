@@ -7,6 +7,12 @@ project(av_llm
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(BUILD_SHARED_LIBS OFF)
+
+# if (APPLE)
+#     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+# endif()
+
 include(external.cmake)
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
@@ -30,6 +36,7 @@ foreach(asset ${PUBLIC_ASSETS})
     set_source_files_properties(${output} PROPERTIES GENERATED TRUE)
 
 endforeach()
+
 
 
 set(TARGET av_llm)

@@ -2,31 +2,36 @@
 
 - Gen AI stuff
 
+# Installation
+
+| OS      | Download link |
+| ------- | ------------- |
+| macOS   |               |
+| Windows | T.B.U         |
+| Linux   | T.B.U         |
+
+# Quick started
+
+```shell
+$av_llm chat
+```
+
+![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
+
+```shell
+$av_llm serve
+```
+
+## Webassembly
+
+![In-browser](https://avble.github.io/wav_llm/) LLM inference
+
 # Main components
 
 - Web UI: Provide a simple web UI interface to explore/experiment (borrowed from @llama.cpp project)
 - CLI: An lightweight and simple command-line-interface
 - A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
 - LLM Inference engine: by [llama.cp](https://github.com/ggerganov/llama.cpp.git)
-
-## A snapshot
-
-![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
-
-## Webassembly
-
-![In-browser](https://avble.github.io/wav_llm/) LLM inference
-
-# Get started
-
-TBD
-
-- Installation
-- Quick started
-
-# Models
-
-## Playaround
 
 # Models
 

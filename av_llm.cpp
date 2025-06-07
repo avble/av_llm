@@ -44,10 +44,18 @@ static void print_usage(int, char ** argv)
     AVLLM_LOG_INFO("%s", "\n");
 }
 
+// common utils
+static auto ltrim = [](std::string & str) {
+    int i = 0;
+    while (i < str.size() && std::isspace(static_cast<unsigned char>(str[i])))
+        i++;
+    str.erase(0, i);
+};
+
+// curl helper function
 static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
 {
     std::ofstream * of = static_cast<std::ofstream *>(stream);
-
     try
     {
         of->write((const char *) ptr, size * nmemb);
@@ -74,14 +82,62 @@ int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, 
     return 0; // return non-zero to abort transfer
 }
 
-// remove leading space
-static auto ltrim = [](std::string & str) {
-    int i = 0;
-    while (i < str.size() && std::isspace(static_cast<unsigned char>(str[i])))
-        i++;
-    str.erase(0, i);
+// model utils
+auto model_pull = [](std::string url) {
+    AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
+    CURL * curl;
+    CURLcode res;
+
+    std::string outfilename = [](const std::string & url) -> std::string {
+        auto last_slash = url.find_last_of('/');
+        if (last_slash == std::string::npos)
+            return url;
+        return url.substr(last_slash + 1);
+    }(url);
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if (curl)
+    {
+
+        auto file_path = app_path / outfilename;
+        // open a file
+        std::ofstream of(file_path.c_str());
+
+        if (of.is_open())
+        {
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
+            // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+
+            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+
+            // Set progress callback
+            curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+            curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
+
+            // follow redirect
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+            res = curl_easy_perform(curl);
+            if (res != CURLE_OK)
+                AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+
+            of.close();
+        }
+
+        AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
+        curl_easy_cleanup(curl);
+    }
+    else
+    {
+        AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
+    }
+    curl_global_cleanup();
 };
 
+// CLI handlers
 auto model_cmd_handler = [](std::string model_line) {
     std::filesystem::create_directories(app_path);
 
@@ -94,71 +150,51 @@ auto model_cmd_handler = [](std::string model_line) {
         return url.substr(last_slash + 1);
     };
 
-    auto model_pull = [](std::string url) {
-        AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
-        CURL * curl;
-        CURLcode res;
-
-        std::string outfilename = get_file_name_from_url(url);
-
-        curl_global_init(CURL_GLOBAL_DEFAULT);
-        curl = curl_easy_init();
-        if (curl)
-        {
-
-            auto file_path = app_path / outfilename;
-            // open a file
-            std::ofstream of(file_path.c_str());
-
-            if (of.is_open())
-            {
-                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
-                // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-
-                curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-
-                // Set progress callback
-                curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
-                curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
-
-                // follow redirect
-                curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-                res = curl_easy_perform(curl);
-                if (res != CURLE_OK)
-                    AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-
-                of.close();
-            }
-
-            AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
-            curl_easy_cleanup(curl);
-        }
-        curl_global_cleanup();
-    };
-
     auto model_print_header = []() {
-        std::cout << std::left << std::setw(50) << "|Model path" << std::setw(1) << '|' << "Size" << '\n';
-        std::cout << std::string(58, '-') << '\n';
+        std::cout << std::left << std::setw(70) << "|Model path" << std::setw(1) << '|' << "Size" << '\n';
+        std::cout << std::string(78, '-') << '\n'; // Increased from 58 to 78 to match new width
     };
+
     auto model_print = [](const std::filesystem::path & model_path, const std::uintmax_t & size) {
-        std::cout << std::setw(50) << "|" + model_path.generic_string() << std::setw(1) << '|' << HumanReadable{ size } << "\n";
+        std::cout << std::setw(70) << "|" + model_path.generic_string() << std::setw(1) << '|' << HumanReadable{ size } << "\n";
     };
+
     auto model_print_footer = []() {
-        std::cout << std::string(57, '-') << std::endl; // flush
+        std::cout << std::string(77, '-') << std::endl; // Increased from 57 to 77 to match new width
     };
 
     auto model_ls = [&model_print_header, &model_print, &model_print_footer]() {
+        std::vector<std::filesystem::path> search_paths = {
+            app_path,                                       // ~/.av_llm
+            std::filesystem::path("/usr/local/etc/.av_llm") // /usr/local/etc/.av_llm
+        };
+
         model_print_header();
-        for (const auto & entry : std::filesystem::directory_iterator(app_path))
+
+        for (const auto & search_path : search_paths)
         {
-            if (entry.is_regular_file())
+            if (std::filesystem::exists(search_path))
             {
-                model_print(std::filesystem::path("~/.av_llm/") / entry.path().filename(), entry.file_size());
+                for (const auto & entry : std::filesystem::directory_iterator(search_path))
+                {
+                    if (entry.is_regular_file() && entry.path().extension() == ".gguf")
+                    {
+                        // Format the displayed path based on which directory it's from
+                        std::filesystem::path display_path;
+                        if (search_path == app_path)
+                        {
+                            display_path = std::filesystem::path("~/.av_llm") / entry.path().filename();
+                        }
+                        else
+                        {
+                            display_path = entry.path(); // Show full path for system directory
+                        }
+                        model_print(display_path, entry.file_size());
+                    }
+                }
             }
         }
+
         model_print_footer();
     };
 
@@ -169,7 +205,7 @@ auto model_cmd_handler = [](std::string model_line) {
     std::smatch smatch_;
     if (std::regex_match(model_line, smatch_, model_pattern))
     {
-        // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
+        AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
         std::string sub_cmd = smatch_[1];
         // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, sub_cmd.c_str());
         std::string model_path = smatch_[2];
@@ -206,12 +242,37 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
 
     if (std::regex_match(model_line, smatch_, chat_pattern))
     {
-        if (std::filesystem::is_regular_file(std::filesystem::path(smatch_[1])))
-            model_path = smatch_[1];
+        // Step 1: Check if smatch_[1] is regular .gguf file (absolute or relative to current dir)
+        std::filesystem::path input_path = std::string(smatch_[1]);
+        if (std::filesystem::is_regular_file(input_path) && input_path.extension() == ".gguf")
+        {
+            model_path = input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from direct path: %s\n", __func__, model_path.c_str());
+        }
+        // Step 2: Check in app_path (~/av_llm/)
+        else if (std::filesystem::is_regular_file(app_path / input_path) && (app_path / input_path).extension() == ".gguf")
+        {
+            model_path = app_path / input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from user directory: %s\n", __func__, model_path.c_str());
+        }
+        // Step 3: Check in /usr/local/etc/.av_llm/
+        else if (std::filesystem::is_regular_file(std::filesystem::path("/usr/local/etc/.av_llm") / input_path) &&
+                 (std::filesystem::path("/usr/local/etc/.av_llm") / input_path).extension() == ".gguf")
+        {
+            model_path = std::filesystem::path("/usr/local/etc/.av_llm") / input_path;
+            AVLLM_LOG_DEBUG("%s: Using model from system directory: %s\n", __func__, model_path.c_str());
+        }
         else
-            model_path = app_path / std::string(smatch_[1]);
+        {
+            AVLLM_LOG_ERROR("%s: Could not find valid .gguf model file: %s\n", __func__, input_path.c_str());
+            return -1;
+        }
     }
-
+    else
+    {
+        AVLLM_LOG_ERROR("%s: Invalid model path format\n", __func__);
+        return -1;
+    }
     ggml_backend_load_all();
 
     // model initialized
@@ -393,7 +454,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     return 0;
 };
 
-auto server_cmd_handler = [](std::string run_line) { // run serve
+auto server_cmd_handler = [](std::string run_line) -> int { // run serve
     std::string model_path;
     int srv_port = 8080;
 
@@ -807,6 +868,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     LOG("\n");
 
     llama_model_free(model);
+    return 0;
 };
 
 int main(int argc, char ** argv)
@@ -834,30 +896,44 @@ int main(int argc, char ** argv)
     for (int i = 0; i < argc; i++)
         AVLLM_LOG_DEBUG("[%03d]:%s\n", i, argv[i]);
 
+    if (argc == 1)
+    {
+        AVLLM_LOG_ERROR("%s\n", "error systax. Please refer to manual");
+        exit(0);
+    }
+
     pre_config_model_init();
 
-    { // handle the syntax
+    auto chat_serve_caller = [](std::string model_description,
+                                std::function<int(std::string)> chat_or_serve_func) -> int { // handle the syntax
         // $./av_llm <model-description>
         // which is alias to $./av_llm chat
 
         {
             // handle if the argv[1] is *.guff
-            std::filesystem::path model_path = argv[1];
-            if (model_path.extension() == ".gguf" and
-                (std::filesystem::is_regular_file(model_path) or std::filesystem::is_regular_file(app_path / model_path)))
+            std::filesystem::path model_filename = model_description;
+            if (model_filename.extension() == ".gguf")
             {
-                chat_cmd_handler(model_path);
+
+                std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
+                    : std::filesystem::is_regular_file(app_path / model_filename)
+                    ? std::optional<std::filesystem::path>(app_path / model_filename)
+                    : std::nullopt;
+
+                if (!model_path.has_value())
+                    chat_or_serve_func(model_path.value());
+
                 return 0;
             }
         }
 
         {
             // handle precofig model
-            if (pre_config_model.find(argv[1]) != pre_config_model.end())
+            if (pre_config_model.find(model_description) != pre_config_model.end())
             {
-                std::string url = pre_config_model[argv[1]];
+                std::string url = pre_config_model[model_description];
 
-                AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, url.c_str());
+                AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
 
                 auto last_slash = url.find_last_of("/");
                 if (last_slash != std::string::npos)
@@ -866,32 +942,45 @@ int main(int argc, char ** argv)
 
                     AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, model_filename.c_str());
 
-                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename)
-                        ? model_filename
-                        : std::filesystem::is_regular_file(app_path / model_filename)
+                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(app_path / model_filename)
                         ? std::optional<std::filesystem::path>(app_path / model_filename)
                         : std::nullopt;
 
                     if (!model_path.has_value())
-                        model_cmd_handler("pull " + url);
+                    {
+                        AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
+                                        model_filename.generic_string().c_str(), url.c_str());
+                        model_pull(url);
+                    }
+                    else
+                        AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
+                                        model_path.value().generic_string().c_str());
 
-                    chat_cmd_handler((app_path / model_filename).generic_string());
+                    chat_or_serve_func((app_path / model_filename).generic_string());
                 }
                 return 0;
             }
         }
         { // todo: handle the descrition (http://)
         }
+
+        return 0;
+    };
+
+    // print each argument
+    std::string line;
+    for (int i = 1; i < argc; i++)
+        line += ((i == 1 ? "" : " ") + std::string(argv[i]));
+
+    {
+        const std::regex pattern(R"((serve|chat|model)(.*))");
+        std::smatch match;
+        if (!std::regex_match(line, match, pattern))
+            chat_serve_caller(argv[1], chat_cmd_handler);
     }
 
     {
         const std::regex pattern(R"((serve|chat|model)(.*))");
-
-        // print each argument
-        std::string line;
-        for (int i = 1; i < argc; i++)
-            line += ((i == 1 ? "" : " ") + std::string(argv[i]));
-
         std::smatch match;
         if (std::regex_match(line, match, pattern))
         {
@@ -908,12 +997,20 @@ int main(int argc, char ** argv)
             }
             else if (command == "chat")
             {
-                std::string cmd = match[2];
-                ltrim(cmd);
-                chat_cmd_handler(cmd);
+                std::string model_desc = match[2];
+                ltrim(model_desc);
+                // chat_cmd_handler(cmd);
+                AVLLM_LOG_DEBUG("%s:%d - chat with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
+                chat_serve_caller(model_desc, chat_cmd_handler);
             }
             else if (command == "serve")
             {
+                std::string model_desc = match[2];
+                ltrim(model_desc);
+                // chat_cmd_handler(cmd);
+                AVLLM_LOG_DEBUG("%s:%d - server with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
+                chat_serve_caller(model_desc, server_cmd_handler);
+#if 0                
                 // check if argument is *.gguf
                 {
                     AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
@@ -969,6 +1066,7 @@ int main(int argc, char ** argv)
                     }
                 }
 
+#endif
                 {
                     AVLLM_LOG_ERROR("%s:%d \n", "args", __LINE__);
                 }
