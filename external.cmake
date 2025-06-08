@@ -9,7 +9,7 @@ endif()
 FetchContent_Declare(
     llama_cpp
     GIT_REPOSITORY https://github.com/avble/llama.cpp.git
-    GIT_TAG        1955993e
+    GIT_TAG        main
 )
 
 FetchContent_Declare(
@@ -32,6 +32,7 @@ if(NOT llama_cpp_POPULATED)
   option(LLAMA_CURL "llama libcur" OFF)
   option(LLAMA_BUILD_SERVER "llama server" OFF)
   option(LLAMA_BUILD_EXAMPLES "llama example" OFF)
+  option(LLAMA_BUILD_TOOLS    "llama: build tools" ON)
   option(LLAMA_BUILD_COMMON "llama: build common utils library" ON)
   option(LLAMA_BUILD_TESTS "llama: build llama tests" OFF)
   add_subdirectory(${llama_cpp_SOURCE_DIR} ${llama_cpp_BINARY_DIR})
@@ -50,23 +51,55 @@ FetchContent_Declare(
   GIT_TAG v3.6.3
 )
 
-set(ENABLE_PROGRAMS OFF CACHE BOOL "Disable mbedTLS example programs")
-set(ENABLE_TESTING OFF CACHE BOOL "Disable mbedTLS tests")
 set(MBEDTLS_FATAL_WARNINGS OFF CACHE BOOL "Avoid compiler warnings as errors")
-set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build static mbedTLS")
+# set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build static mbedTLS")
 
-FetchContent_MakeAvailable(mbedtls)
-set(MBEDTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include" "${mbedtls_BINARY_DIR}")
-set(MBEDTLS_INCLUDE_DIR "${mbedtls_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+FetchContent_GetProperties(mbedtls)
+if (NOT mbedtls_POPULATED)
+  FetchContent_Populate(mbedtls)
 
-set(MBEDTLS_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedtls.lib" CACHE FILEPATH "" FORCE)
-set(MBEDX509_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedx509.lib" CACHE FILEPATH "" FORCE)
-set(MBEDCRYPTO_LIBRARY "${mbedtls_BINARY_DIR}/library/Debug/mbedcrypto.lib" CACHE FILEPATH "" FORCE)
+  execute_process(COMMAND git submodule update --init --recursive
+    WORKING_DIRECTORY ${mbedtls_SOURCE_DIR}
+  )
 
-message("DEBUG " ${MBEDTLS_LIBRARY} )
+  execute_process(
+    COMMAND copy ${CMAKE_SOURCE_DIR}/cmake/patches/mbedtls_CMakelLists.txt ${mbedtls_SOURCE_DIR}/
+    WORKING_DIRECTORY ${mbedtls_SOURCE_DIR}
+  )
 
+  message(STATUS "[mbedtls_SOURCE_DIR] ${mbedtls_SOURCE_DIR}")
+  message(STATUS "[mbedtls_BINARY_DIR] ${mbedtls_BINARY_DIR}")
+
+  set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build static mbedTLS" FORCE)
+  add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
+  
+  # Determine build type (for Ninja and single-config generators)
+  if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
+  endif()
+  
+  # Detect platform and library extensions
+  if (WIN32)
+  set(LIB_EXT ".lib")
+  else()
+  set(LIB_EXT ".a")
+  endif()
+  
+  set(LIB_DIR "${mbedtls_BINARY_DIR}/library")
+  set(MBEDTLS_LIBRARY     "${LIB_DIR}/mbedtls${LIB_EXT}"     CACHE FILEPATH "mbedtls library" FORCE)
+  set(MBEDCRYPTO_LIBRARY  "${LIB_DIR}/mbedcrypto${LIB_EXT}"  CACHE FILEPATH "mbedcrypto library" FORCE)
+  set(MBEDX509_LIBRARY    "${LIB_DIR}/mbedx509${LIB_EXT}"    CACHE FILEPATH "mbedx509 library" FORCE)
+  set(MBEDTLS_INCLUDE_DIRS "${mbedtls_SOURCE_DIR}/include" "${mbedtls_BINARY_DIR}")
+  set(MBEDTLS_INCLUDE_DIR  "${mbedtls_SOURCE_DIR}/include" CACHE PATH "mbedtls include" FORCE)
+  set(MBEDTLS_LIBRARY_DIRS "${LIB_DIR}")
+  set(MBEDTLS_LIBRARIES mbedtls mbedx509 mbedcrypto)
+  set(MBEDTLS_FOUND TRUE CACHE BOOL "MBEDTLS is found" FORCE)
+  
+endif()
+  
+  
 FetchContent_GetProperties(curl)
-if(NOT curl_POPULATED)
+  if(NOT curl_POPULATED)
   FetchContent_Populate(curl)
   option(CURL_DISABLE_ALTSVC "curl disable CURL_DISABLE_ALTSVC" ON)
   option(CURL_DISABLE_AWS "curl disable CURL_DISABLE_ALTSVC" ON)

@@ -2,7 +2,8 @@
 AV_LLM_VERSION = 0.0.1-beta
 
 # Directories
-BUILD_DIR = build
+CMAKE_BUILD_PRESET = x64-windows-msvc-release
+BUILD_DIR = build-$(CMAKE_BUILD_PRESET)
 STAGING_DIR = staging
 OUTPUT_DIR = output
 INSTALL_BIN_DIR = bin
@@ -16,7 +17,7 @@ MKDIR = if not exist "$(@)" mkdir "$(@)"
 COPY = xcopy /y /i /e
 WGET = powershell -Command "Invoke-WebRequest -Uri '$(MODEL_URL)' -OutFile"
 
-all: package
+all: compile
 
 $(BUILD_DIR):
     $(MKDIR) $(BUILD_DIR)
@@ -28,8 +29,7 @@ $(OUTPUT_DIR):
     $(MKDIR) $(OUTPUT_DIR)
 
 compile: $(BUILD_DIR)
-    cmake . -B $(BUILD_DIR) -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
-    cmake --build $(BUILD_DIR) --config Release
+    cmake --preset x64-windows-msvc-release && cmake --build $(BUILD_DIR)
 
 package-prepare: compile $(STAGING_DIR)
     $(MKDIR) $(STAGING_DIR)\$(INSTALL_BIN_DIR)

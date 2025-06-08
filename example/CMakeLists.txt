@@ -45,6 +45,5 @@ foreach(asset ${PUBLIC_ASSETS})
 endforeach()
 
 target_link_libraries(avllm_server PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
-# message("message-av_connect: " ${av_connect_SOURCE_DIR})
 target_include_directories(avllm_server PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(avllm_server PRIVATE cxx_std_17)

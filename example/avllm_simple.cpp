@@ -34,6 +34,16 @@ static void print_usage(int, char ** argv)
 int main(int argc, char ** argv)
 {
 
+#if 0
+    std::string input;
+    std::cout << "Enter a string: ";
+    std::getline(std::cin, input);  // Reads the entire line including spaces
+    std::cout << "You entered: " << input << std::endl;
+    return 0;
+#endif
+
+
+
     // chat
 
     std::string model_path;
