@@ -67,9 +67,7 @@ if (NOT mbedtls_POPULATED)
     WORKING_DIRECTORY ${mbedtls_SOURCE_DIR}
   )
 
-  message(STATUS "[mbedtls_SOURCE_DIR] ${mbedtls_SOURCE_DIR}")
-  message(STATUS "[mbedtls_BINARY_DIR] ${mbedtls_BINARY_DIR}")
-
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
   set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "Build static mbedTLS" FORCE)
   add_subdirectory(${mbedtls_SOURCE_DIR} ${mbedtls_BINARY_DIR})
   

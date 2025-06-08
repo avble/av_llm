@@ -30,7 +30,7 @@ all: compile
 
 compile:
 	$(MKDIR) $(BUILD_DIR)
-	cmake -B $(BUILD_DIR)  && cmake --build $(BUILD_DIR)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release  && cmake --build $(BUILD_DIR) 
 
 package-prepare: compile
 	$(MKDIR) $(STAGING_DIR)/$(INSTALL_BIN_DIR)
