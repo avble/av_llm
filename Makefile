@@ -25,14 +25,12 @@ else
     WGET = wget -O
 endif
 
-all: package
+all: compile
 	@echo "Create the package"
 
 compile:
 	$(MKDIR) $(BUILD_DIR)
-	cmake . -B $(BUILD_DIR)
-	#cmake . -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(BUILD_DIR)
+	cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release  && cmake --build $(BUILD_DIR) 
 
 package-prepare: compile
 	$(MKDIR) $(STAGING_DIR)/$(INSTALL_BIN_DIR)
@@ -53,7 +51,7 @@ ifeq ($(UNAME_S), Linux)
 	$(CP) scripts/control $(STAGING_DIR)/DEBIAN/
 endif
 
-package: package-prepare
+package: compile package-prepare
 	$(MKDIR) $(OUTPUT_DIR)
 ifeq ($(OS),Windows_NT)
 	makensis /DVERSION=$(AV_LLM_VERSION) /DSTAGING_DIR=$(STAGING_DIR) scripts/installer.nsi
