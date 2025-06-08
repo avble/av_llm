@@ -7,7 +7,11 @@ project(av_llm
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(BUILD_SHARED_LIBS OFF)
+set(ENABLE_PROGRAMS OFF CACHE BOOL "Disable programs")
+set(ENABLE_TESTING OFF CACHE BOOL "Disable tests")
+
+
+# set(BUILD_SHARED_LIBS OFF)
 
 # if (APPLE)
 #     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
@@ -16,6 +20,7 @@ set(BUILD_SHARED_LIBS OFF)
 include(external.cmake)
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
+
 set(TARGET_SRCS
     av_llm.cpp
 )

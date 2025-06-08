@@ -30,7 +30,6 @@ static void print_usage(int, char ** argv)
     printf("\n");
 }
 
-
 int main(int argc, char ** argv)
 {
 

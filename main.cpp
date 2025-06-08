@@ -478,8 +478,9 @@ int main(int argc, char ** argv)
     route_.post("/v1/completions", [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
     // chat
     route_.post("/chat/completions", [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
-    route_.post("/v1/chat/completions",
-                [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+    route_.post("/v1/chat/completions", [](http::response res) {
+        std::thread{ completions_chat_handler, std::move(res) }.detach();
+    });
 
     AVLLM_LOG_INFO("Server is started at http://127.0.0.1:%d\n", srv_port);
     http::start_server(srv_port, route_);
