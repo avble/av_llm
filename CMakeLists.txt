@@ -7,9 +7,20 @@ project(av_llm
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(ENABLE_PROGRAMS OFF CACHE BOOL "Disable programs")
+set(ENABLE_TESTING OFF CACHE BOOL "Disable tests")
+
+
+# set(BUILD_SHARED_LIBS OFF)
+
+# if (APPLE)
+#     set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+# endif()
+
 include(external.cmake)
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
+
 set(TARGET_SRCS
     av_llm.cpp
 )
@@ -31,9 +42,13 @@ foreach(asset ${PUBLIC_ASSETS})
 
 endforeach()
 
-
 set(TARGET av_llm)
 add_executable(${TARGET} ${TARGET_SRCS})
+
+if(MSVC)
+    target_compile_options(${TARGET} PRIVATE /bigobj)
+    add_compile_options(/std:c++17)
+endif()
 
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl )
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})

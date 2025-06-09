@@ -24,6 +24,10 @@ It can be used, modified.
 
 #include <inttypes.h>
 
+#ifdef _MSC_VER
+#include <ciso646>
+#endif
+
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
 

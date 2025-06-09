@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<installer-gui-script minSpecVersion="2">
+    <!-- Installer Metadata -->
+    <title>av_llm Installer</title>
+    <organization>Avbl</organization>
+    <options customize="never" require-scripts="false" rootVolumeOnly="true"/>
+
+    <!-- Supported macOS Versions -->
+    <!-- <volume-check>
+        <allowed-os-versions>
+            <os-version min="10.x.x"/>
+        </allowed-os-versions>
+    </volume-check> -->
+
+    <!-- Installation Choices -->
+    <choices-outline>
+        <line choice="default">
+            <line choice="av_llm"/>
+        </line>
+    </choices-outline>
+
+    <choice id="default"/>
+    <choice id="av_llm" title="Avllm" visible="true" start_selected="true">
+        <pkg-ref id="com.avble.llm"/>
+    </choice>
+
+    <!-- Component Package Reference -->
+    <pkg-ref id="com.avble.llm" version="1.0.0" onConclusion="none">av_llm.pkg</pkg-ref>
+</installer-gui-script>
+

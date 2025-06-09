@@ -1,0 +1,51 @@
+# Version information
+AV_LLM_VERSION = 0.0.1-beta
+
+# Directories
+CMAKE_BUILD_PRESET = x64-windows-msvc-release
+BUILD_DIR = build-$(CMAKE_BUILD_PRESET)
+STAGING_DIR = staging
+OUTPUT_DIR = output
+INSTALL_BIN_DIR = bin
+INSTALL_CONFIG_DIR = etc\.av_llm
+MODEL_FILE = qwen1_5-0_5b-chat-q8_0.gguf
+MODEL_URL = https://huggingface.co/Qwen/Qwen1.5-0.5B-Chat-GGUF/resolve/main/$(MODEL_FILE)
+
+# Commands
+RMDIR = if exist "$(@)" rmdir /s /q "$(@)"
+MKDIR = if not exist "$(@)" mkdir "$(@)"
+COPY = xcopy /y /i /e
+WGET = powershell -Command "Invoke-WebRequest -Uri '$(MODEL_URL)' -OutFile"
+
+all: compile
+
+$(BUILD_DIR):
+    $(MKDIR) $(BUILD_DIR)
+
+$(STAGING_DIR):
+    $(MKDIR) $(STAGING_DIR)
+
+$(OUTPUT_DIR):
+    $(MKDIR) $(OUTPUT_DIR)
+
+compile: $(BUILD_DIR)
+    cmake --preset x64-windows-msvc-release && cmake --build $(BUILD_DIR)
+
+package-prepare: compile $(STAGING_DIR)
+    $(MKDIR) $(STAGING_DIR)\$(INSTALL_BIN_DIR)
+    $(MKDIR) $(STAGING_DIR)\$(INSTALL_CONFIG_DIR)
+    copy $(BUILD_DIR)\Release\av_llm.exe $(STAGING_DIR)\$(INSTALL_BIN_DIR)
+    if not exist "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)" \
+        $(WGET) "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)"
+
+package: package-prepare $(OUTPUT_DIR)
+    makensis /DVERSION=$(AV_LLM_VERSION) /DSTAGING_DIR=$(STAGING_DIR) scripts\installer.nsi
+    move scripts\av_llm-windows-installer-$(AV_LLM_VERSION).exe $(OUTPUT_DIR)
+
+clean:
+    $(RMDIR) $(BUILD_DIR)
+    $(RMDIR) $(STAGING_DIR)
+    $(RMDIR) $(OUTPUT_DIR)
+
+install-test:
+    $(OUTPUT_DIR)\av_llm-windows-installer-$(AV_LLM_VERSION).exe /S

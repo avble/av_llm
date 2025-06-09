@@ -21,3 +21,5 @@ add_executable(test_curl test_main.cpp test_curl.cpp)
 target_link_libraries(test_curl CURL::libcurl Catch2)
 
 # add_executable(test_curl test_curl.cp)
+
+# add_subdirectory(test_make_installer)
