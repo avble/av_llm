@@ -19,3 +19,36 @@ jobs:
         run: |
           cmake --preset arm64-apple-clang-release
           cmake --build build-arm64-apple-clang-release --config Release
+
+  macOS-x64:
+    runs-on: macos-13
+
+    steps:
+      - name: Clone
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        id: cmake_build
+        run: |
+          cmake -B build
+          cmake --build build
+
+  Ubuntu:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Clone
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        id: cmake_build
+        run: |
+          cmake -B build
+          cmake --build build
+    
