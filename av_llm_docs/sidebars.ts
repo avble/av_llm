@@ -6,14 +6,37 @@ const sidebars: SidebarsConfig = {
 
   sidebar: [
     {
-      type: "link",
-      label: "Overview",
-      href: "/",
+      type: "doc",
+      id: "getstarted"
     },
-    "cli",
-    // "server",
-    // "capability",
-    // "integration",
+    {
+      type: "category",
+      label: "CLI-Basic",
+      items: [
+      {
+        type: 'doc',
+        id: "cli"
+      },{
+        type: 'doc',
+        id: "chat"
+      },
+      {
+        type: 'doc',
+        id: "server"
+      },
+    ]
+    },
+    //  {
+    //   type: "category",
+    //   label: "CLI-Advanced",
+    //   items: [ {
+    //     type: 'doc',
+    //     id: "cli"
+    //   },{
+    //     type: 'doc',
+    //     id: "chat"
+    //   },]
+    //   }
   ],
 };
 
