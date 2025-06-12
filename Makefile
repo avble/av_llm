@@ -29,8 +29,10 @@ package-prepare: compile
 	$(MKDIR) $(STAGING_DIR)/$(INSTALL_BIN_DIR)
 	$(MKDIR) $(STAGING_DIR)/$(INSTALL_CONFIG_DIR)
 	$(CP) $(BUILD_DIR)/av_llm $(STAGING_DIR)/$(INSTALL_BIN_DIR)/
+ifeq ($(UNAME_S), Darwin)
+	$(CP) $(BUILD_DIR)/bin/*.dylib $(STAGING_DIR)/$(INSTALL_BIN_DIR)/
+else ifeq ($(UNAME_S), Linux)
 	$(CP) $(BUILD_DIR)/bin/*.so $(STAGING_DIR)/$(INSTALL_BIN_DIR)/
-ifeq ($(UNAME_S), Linux)
 	$(MKDIR) $(STAGING_DIR)/DEBIAN
 	$(CP) scripts/control $(STAGING_DIR)/DEBIAN/
 endif
