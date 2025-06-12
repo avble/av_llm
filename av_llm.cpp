@@ -31,6 +31,8 @@ It can be used, modified.
 #include <curl/curl.h>
 #include <inttypes.h>
 
+#include <CLI/CLI.hpp>
+
 #ifdef _MSC_VER
 #include <ciso646>
 #endif
@@ -975,55 +977,79 @@ int main(int argc, char ** argv)
 
         return 0;
     };
+		
 
-    // print each argument
-    std::string line;
-    for (int i = 1; i < argc; i++)
-        line += ((i == 1 ? "" : " ") + std::string(argv[i]));
+    CLI::App app{"av_llm - CLI program"};
+    bool version_flag = false;
+    app.add_flag("-v,--version", version_flag, "show version");
 
-    {
-        const std::regex pattern(R"((serve|chat|model)(.*))");
-        std::smatch match;
-        if (!std::regex_match(line, match, pattern))
-            chat_serve_caller(argv[1], chat_cmd_handler);
-    }
+    // ---- MODEL command ----
+    auto model = app.add_subcommand("model", "Model operations");
 
-    {
-        const std::regex pattern(R"((serve|chat|model)(.*))");
-        std::smatch match;
-        if (std::regex_match(line, match, pattern))
-        {
-            AVLLM_LOG_DEBUG("[DEBUG] %s:%d:%s\n", __func__, __LINE__, line.c_str());
-            std::string command;
-            command = match[1];
+    // model ls subcommand
+    auto model_ls = model->add_subcommand("ls", "List all models");
 
-            if (command == "model")
-            {
-                std::string model_cmd = match[2];
-                AVLLM_LOG_DEBUG("[DEBUG] %s:%d:%s\n", __func__, __LINE__, model_cmd.c_str());
-                ltrim(model_cmd);
-                model_cmd_handler(model_cmd);
-            }
-            else if (command == "chat")
-            {
-                std::string model_desc = match[2];
-                ltrim(model_desc);
-                // chat_cmd_handler(cmd);
-                AVLLM_LOG_DEBUG("%s:%d - chat with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
-                chat_serve_caller(model_desc, chat_cmd_handler);
-            }
-            else if (command == "serve")
-            {
-                std::string model_desc = match[2];
-                ltrim(model_desc);
-                // chat_cmd_handler(cmd);
-                AVLLM_LOG_DEBUG("%s:%d - server with model-description: %s\n", __func__, __LINE__, model_desc.c_str());
-                chat_serve_caller(model_desc, server_cmd_handler);
-            }
-            else
-                AVLLM_LOG_ERROR("%s:%d \n", "args", __LINE__);
-        }
+    // model pull subcommand
+    std::string model_pull_url;
+    auto model_pull = model->add_subcommand("pull", "Pull a model (url: string)");
+    model_pull->add_option("url", model_pull_url, "Model URL")->required();
 
+    // model del subcommand
+    std::string model_del_name;
+    auto model_del = model->add_subcommand("del", "Delete a model (model: string)");
+    model_del->add_option("model", model_del_name, "Model name")->required();
+
+    // ---- CHAT command ----
+    std::string chat_model_path;
+    auto chat = app.add_subcommand("chat", "Start an interactive chat");
+    chat->add_option("model-path", chat_model_path, "Model path")->required();
+
+    // ---- SERVE command ----
+    std::string serve_model_path;
+    auto serve = app.add_subcommand("serve", "Serve model");
+    serve->add_option("model-path", serve_model_path, "Model path")->required();
+
+
+    CLI11_PARSE(app, argc, argv);
+
+    if (version_flag) {
+        std::cout << "av_llm version 0.1.0" << std::endl;
         return 0;
     }
+
+    // ---- MODEL logic ----
+    if (*model) {
+        if (*model_ls) {
+            model_cmd_handler("ls");
+        } else if (*model_pull) {
+            model_cmd_handler("pull " + model_pull_url);
+        } else if (*model_del) {
+            model_cmd_handler("del " + model_del_name);
+        } else {
+            std::cerr << "Specify a model subcommand: ls, pull <url>, or del <model>\n";
+            model->help();
+        }
+        return 0;
+    }
+
+    // ---- CHAT logic ----
+    if (*chat) {
+        chat_cmd_handler(chat_model_path);
+        return 0;
+    }
+
+    // ---- SERVE logic ----
+    if (*serve) {
+        server_cmd_handler(serve_model_path);
+        return 0;
+    }
+
+		// TODO: the fallback does not work as the parser handler has processed when the command is not correct 
+		 // If no subcommand, fallback to legacy behavior: treat argv[1] as model description (chat or serve)
+    if (argc > 1)
+		{
+        chat_serve_caller(argv[1], chat_cmd_handler);
+		}
+
+    std::cout << app.help() << std::endl;
 }
