@@ -6,25 +6,26 @@
 
 | OS      | Download link |
 | ------- | ------------- |
-| macOS   |               |
+| macOS   | T.B.U         |
 | Windows | T.B.U         |
 | Linux   | T.B.U         |
 
 # Quick started
 
 ```shell
-$av_llm chat
+$av_llm chat <path to module .gguf file>
+```
+
+```shell
+$av_llm serve <path to module .gguf file>
 ```
 
 ![demo-1](https://github.com/avble/av_llm/blob/main/image/demo_4.png?raw=true)
 
-```shell
-$av_llm serve
-```
 
 ## Webassembly
 
-![In-browser](https://avble.github.io/wav_llm/) LLM inference
+[In-browser](https://avble.github.io/wav_llm/) LLM inference 
 
 # Main components
 
@@ -59,9 +60,14 @@ This application is built on the top of [llama.cpp](https://github.com/ggerganov
 - [Falcon](https://huggingface.co/models?search=tiiuae/falcon)
 - [Chinese-LLaMA-Alpaca](https://github.com/ymcui/Chinese-LLaMA-Alpaca)
 
+# Known limitation
+
+- The performance of inference in web is poor
+
 # Future work
 
 - Support more AI tasks
+  
 
 # Note
 
