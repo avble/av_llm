@@ -977,49 +977,38 @@ int main(int argc, char ** argv)
 
         return 0;
     };
-
-    // print each argument
-    // std::string line;
-    // for (int i = 1; i < argc; i++)
-    //     line += ((i == 1 ? "" : " ") + std::string(argv[i]));
-
-    // {
-    //     const std::regex pattern(R"((serve|chat|model)(.*))");
-    //     std::smatch match;
-    //     if (!std::regex_match(line, match, pattern))
-    //         chat_serve_caller(argv[1], chat_cmd_handler);
-    // }
+		
 
     CLI::App app{"av_llm - CLI program"};
-
-    // Global options
-    int option_1 = 0;
-    std::string option_2;
-    app.add_option("--option_1", option_1, "this is the option 1. type int");
-    app.add_option("--option_2", option_2, "this is option 2. type string");
-
     bool version_flag = false;
     app.add_flag("-v,--version", version_flag, "show version");
 
     // ---- MODEL command ----
     auto model = app.add_subcommand("model", "Model operations");
-    // Subcommands for model
-    bool model_ls_flag = false;
-    model->add_flag("--ls", model_ls_flag, "List all models");
+
+    // model ls subcommand
+    auto model_ls = model->add_subcommand("ls", "List all models");
+
+    // model pull subcommand
     std::string model_pull_url;
-    model->add_option("--pull", model_pull_url, "Pull a model (url: string)");
+    auto model_pull = model->add_subcommand("pull", "Pull a model (url: string)");
+    model_pull->add_option("url", model_pull_url, "Model URL")->required();
+
+    // model del subcommand
     std::string model_del_name;
-    model->add_option("--del", model_del_name, "Delete a model (model: string)");
+    auto model_del = model->add_subcommand("del", "Delete a model (model: string)");
+    model_del->add_option("model", model_del_name, "Model name")->required();
 
     // ---- CHAT command ----
     std::string chat_model_path;
-    auto chat = app.add_subcommand("chat", "Start an interactive chat. Get input from std::in. The chat is completed until the user presses ctrl-C twice");
+    auto chat = app.add_subcommand("chat", "Start an interactive chat");
     chat->add_option("model-path", chat_model_path, "Model path")->required();
 
     // ---- SERVE command ----
     std::string serve_model_path;
     auto serve = app.add_subcommand("serve", "Serve model");
     serve->add_option("model-path", serve_model_path, "Model path")->required();
+
 
     CLI11_PARSE(app, argc, argv);
 
@@ -1030,14 +1019,15 @@ int main(int argc, char ** argv)
 
     // ---- MODEL logic ----
     if (*model) {
-        if (model_ls_flag) {
+        if (*model_ls) {
             model_cmd_handler("ls");
-        } else if (!model_pull_url.empty()) {
+        } else if (*model_pull) {
             model_cmd_handler("pull " + model_pull_url);
-        } else if (!model_del_name.empty()) {
+        } else if (*model_del) {
             model_cmd_handler("del " + model_del_name);
         } else {
-            std::cerr << "Specify a model subcommand: --ls, --pull <url>, or --del <model>\n";
+            std::cerr << "Specify a model subcommand: ls, pull <url>, or del <model>\n";
+            model->help();
         }
         return 0;
     }
@@ -1054,7 +1044,12 @@ int main(int argc, char ** argv)
         return 0;
     }
 
-    // fallback
+		// TODO: the fallback does not work as the parser handler has processed when the command is not correct 
+		 // If no subcommand, fallback to legacy behavior: treat argv[1] as model description (chat or serve)
     if (argc > 1)
+		{
         chat_serve_caller(argv[1], chat_cmd_handler);
+		}
+
+    std::cout << app.help() << std::endl;
 }

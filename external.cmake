@@ -144,7 +144,6 @@ if(NOT av_connect_POPULATED)
 endif()
 
 
-include(FetchContent)
 FetchContent_Declare(
     CLI11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git

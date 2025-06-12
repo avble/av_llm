@@ -44,7 +44,7 @@ if(MSVC)
     add_compile_options(/std:c++17)
 endif()
 
-target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl )
+target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl CLI11::CLI11 )
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
