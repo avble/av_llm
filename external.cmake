@@ -143,3 +143,11 @@ if(NOT av_connect_POPULATED)
 	add_subdirectory(${av_connect_SOURCE_DIR} ${av_connect_BINARY_DIR})
 endif()
 
+
+FetchContent_Declare(
+    CLI11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG v2.4.2
+)
+FetchContent_MakeAvailable(CLI11)
+
