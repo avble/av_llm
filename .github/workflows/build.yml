@@ -51,4 +51,25 @@ jobs:
         run: |
           cmake -B build
           cmake --build build
-    
+  
+  Windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Vulkan SDK
+        run: |
+          choco install vulkan-sdk -y
+
+      - name: Remove local-only vcvars64.bat calls
+        run: |
+          (Get-Content build_vulkan.bat) -replace 'call\s+"?E:\\software_vs\\VC\\Auxiliary\\Build\\vcvars64\.bat"?', '' | Set-Content build_vulkan_ci.bat
+
+      - name: Build with Vulkan
+        run: |
+          ./build_vulkan_ci.bat 
