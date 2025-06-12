@@ -214,11 +214,8 @@ auto model_cmd_handler = [](std::string model_line) {
     {
         AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
         std::string sub_cmd = smatch_[1];
-        // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, sub_cmd.c_str());
         std::string model_path = smatch_[2];
-        // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s \n", "model_cmd_handler", __LINE__, model_path.c_str());
         ltrim(model_path);
-        // AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_path.c_str());
 
         if (sub_cmd == "pull")
         {

@@ -12,7 +12,7 @@ It can be used, modified.
 
 #include "av_connect.hpp"
 #include "helper.hpp"
-#include "../index.html.gz.hpp"
+#include "./index.html.gz.hpp"
 #include "../log.hpp"
 
 #include <chrono>

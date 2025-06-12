@@ -1,10 +1,11 @@
 # Version information
-AV_LLM_VERSION = 0.0.1-beta
+AV_LLM_VERSION = 0.0.1-preview
 
 # Directories
-CMAKE_BUILD_PRESET = x64-windows-msvc-release
+CMAKE_BUILD_PRESET = x64-windows-vulkan-release
 BUILD_DIR = build-$(CMAKE_BUILD_PRESET)
 STAGING_DIR = staging
+# STAGING_FULL_DIR = $(shell realpath $(STAGING_DIR))
 OUTPUT_DIR = output
 INSTALL_BIN_DIR = bin
 INSTALL_CONFIG_DIR = etc\.av_llm
@@ -29,18 +30,19 @@ $(OUTPUT_DIR):
     $(MKDIR) $(OUTPUT_DIR)
 
 compile: $(BUILD_DIR)
-    cmake --preset x64-windows-msvc-release && cmake --build $(BUILD_DIR)
+    cmake --preset $(CMAKE_BUILD_PRESET) && cmake --build $(BUILD_DIR)
 
 package-prepare: compile $(STAGING_DIR)
     $(MKDIR) $(STAGING_DIR)\$(INSTALL_BIN_DIR)
     $(MKDIR) $(STAGING_DIR)\$(INSTALL_CONFIG_DIR)
-    copy $(BUILD_DIR)\Release\av_llm.exe $(STAGING_DIR)\$(INSTALL_BIN_DIR)
+    copy $(BUILD_DIR)\av_llm.exe $(STAGING_DIR)\$(INSTALL_BIN_DIR)
+    copy $(BUILD_DIR)\bin\*.dll $(STAGING_DIR)\$(INSTALL_BIN_DIR)
     if not exist "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)" \
         $(WGET) "$(STAGING_DIR)\$(INSTALL_CONFIG_DIR)\$(MODEL_FILE)"
 
 package: package-prepare $(OUTPUT_DIR)
-    makensis /DVERSION=$(AV_LLM_VERSION) /DSTAGING_DIR=$(STAGING_DIR) scripts\installer.nsi
-    move scripts\av_llm-windows-installer-$(AV_LLM_VERSION).exe $(OUTPUT_DIR)
+    makensis /DVERSION=$(AV_LLM_VERSION) /DSTAGING_DIR=E:\work\00_llm\av_llm\$(STAGING_DIR) scripts\installer.nsi
+		# move scripts\av_llm-windows-installer-$(AV_LLM_VERSION).exe $(OUTPUT_DIR)
 
 clean:
     $(RMDIR) $(BUILD_DIR)

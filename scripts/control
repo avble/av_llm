@@ -1,0 +1,9 @@
+Package: av-llm
+Version: 0.0.1-preview
+Section: base
+Priority: optional
+Architecture: amd64 
+Maintainer: Harry Avble <harry.avble@outlook.com>
+Description: av_llm LLM inference 
+ This app does LLM inference.
+
