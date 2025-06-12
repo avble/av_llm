@@ -16,8 +16,7 @@ add_llm_example(avllm_gen)
 add_llm_example(avllm_simple)
 add_llm_example(avllm_chat)
 
-set(TARGET_SRCS avllm_server.cpp)
-add_executable(avllm_server avllm_server.cpp ${PUBLIC_WEBUI_SRCS})
+add_executable(avllm_server avllm_server.cpp)
 
 target_link_libraries(avllm_server PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
-target_include_directories(avllm_server PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR} )
+target_include_directories(avllm_server PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR} )

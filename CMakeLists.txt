@@ -12,9 +12,6 @@ include("external.cmake")
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
 
-set(TARGET_SRCS
-    av_llm.cpp
-)
 
 set(PUBLIC_WEBUI
     index.html.gz
@@ -32,7 +29,12 @@ foreach(asset ${PUBLIC_WEBUI})
         COMMAND "${CMAKE_COMMAND}" "-DINPUT=${input}" "-DOUTPUT=${output}" -P "${PROJECT_SOURCE_DIR}/scripts/xxd.cmake"
     )
     set_source_files_properties(${output} PROPERTIES GENERATED TRUE)
+
 endforeach()
+
+set(TARGET_SRCS
+    av_llm.cpp
+)
 
 set(TARGET av_llm)
 add_executable(${TARGET} ${TARGET_SRCS} ${PUBLIC_WEBUI_SRCS})
