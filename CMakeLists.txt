@@ -33,7 +33,7 @@ foreach(asset ${PUBLIC_WEBUI})
 endforeach()
 
 set(TARGET_SRCS
-    av_llm.cpp
+    av_llm_1.cpp
 )
 
 set(TARGET av_llm)

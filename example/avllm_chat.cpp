@@ -33,51 +33,6 @@ static void print_usage(int, char ** argv)
 
 int main(int argc, char ** argv)
 {
-
-    // chat
-
-    // std::string model_path;
-    // int n_ctx = 2048;
-    // [&argc, &argv](auto & model_path, auto & n_ctx) { // parsing the argument
-    //     int i = 0;
-    //     try
-    //     {
-    //         for (int i = 1; i < argc; i++)
-    //         {
-    //             if (strcmp(argv[i], "-m") == 0)
-    //             {
-    //                 if (i + 1 < argc)
-    //                 {
-    //                     model_path = argv[++i];
-    //                 }
-    //                 else
-    //                 {
-    //                     print_usage(1, argv);
-    //                 }
-    //             }
-    //             else if (strcmp(argv[i], "-c") == 0)
-    //             {
-    //                 if (i + 1 < argc)
-    //                 {
-    //                     n_ctx = std::stoi(argv[++i]);
-    //                 }
-    //                 else
-    //                 {
-    //                     print_usage(1, argv);
-    //                 }
-    //             }
-    //         }
-    //     } catch (const std::exception & ex)
-    //     {
-    //         fprintf(stdout, "%s:%d , exception: %s \n", __func__, __LINE__, ex.what());
-    //     }
-    // }(model_path, n_ctx);
-    // if (model_path == "")
-    // {
-    //     print_usage(1, argv);
-    //     return 1;
-    // }
-
     // Use a parameter struct similar to llama.cpp
     common_params params;
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage)) {
@@ -115,36 +70,6 @@ int main(int argc, char ** argv)
     LOG_INF("%s: load the model and apply lora adapter, if any\n", __func__);
     common_init_result llama_init = common_init_from_params(params);
 
-
-    // ggml_backend_load_all();
-
-    // model initialized
-    // llama_model * model = [&model_path]() -> llama_model * {
-    //     llama_model_params model_params = llama_model_default_params();
-    //     model_params.n_gpu_layers       = 99;
-    //     return llama_model_load_from_file(model_path.c_str(), model_params);
-    // }();
-    // if (model == nullptr)
-    // {
-    //     fprintf(stderr, "%s: error: unable to load model\n", __func__);
-    //     return 1;
-    // }
-
-    // // context initialize
-    // llama_context * ctx = [&model, &n_ctx]() -> llama_context * {
-    //     llama_context_params ctx_params = llama_context_default_params();
-    //     ctx_params.no_perf              = false;
-    //     ctx_params.n_ctx                = n_ctx;
-    //     ctx_params.n_batch              = n_ctx;
-
-    //     return llama_init_from_model(model, ctx_params);
-    // }();
-    // if (ctx == nullptr)
-    // {
-    //     fprintf(stderr, "%s: error: failed to create the llama_context\n", __func__);
-    //     return -1;
-    // }
-
     llama_model *model = llama_init.model.get();
     llama_context *ctx = llama_init.context.get();
 
@@ -160,20 +85,6 @@ int main(int argc, char ** argv)
 
     // Attach threadpool to context
     llama_attach_threadpool(ctx, threadpool, nullptr);
-
-    // initialize the sampler
-    // llama_sampler * smpl = []() {
-    //     auto sparams    = llama_sampler_chain_default_params();
-    //     sparams.no_perf = false;
-    //     auto smpl       = llama_sampler_chain_init(sparams);
-    //     llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-    //     return smpl;
-    // }();
-    // if (smpl == nullptr)
-    // {
-    //     fprintf(stderr, "%s: error: could not create sampling\n", __func__);
-    //     return -1;
-    // }
 
         // ---- Sampling setup refactored to match llama.cpp (main.cpp) ----
     auto &sparams = params.sampling;
