@@ -83,7 +83,7 @@ jobs:
         run: |
           build_vulkan_ci.bat
   
-	windows-sycl:
+  windows-sycl:
     runs-on: windows-latest
 
     defaults:
