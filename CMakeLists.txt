@@ -8,10 +8,11 @@ project(av_llm
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include("external.cmake")
 
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
+option(AV_LLM_USE_SYSTEM_CURL "av_llm: using system lib cur" OFF)
 
+include("external.cmake")
 
 set(PUBLIC_WEBUI
     index.html.gz
@@ -42,6 +43,11 @@ add_executable(${TARGET} ${TARGET_SRCS} ${PUBLIC_WEBUI_SRCS})
 if(MSVC)
     target_compile_options(${TARGET} PRIVATE /bigobj)
     add_compile_options(/std:c++17)
+endif()
+
+if (AV_LLM_USE_SYSTEM_CURL STREQUAL "ON")
+	find_package(CURL REQUIRED)
+	message(STATUS "libcurl is found: ${CURL_VERSION_STRING}")
 endif()
 
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl CLI11::CLI11 )
