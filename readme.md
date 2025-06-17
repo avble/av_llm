@@ -2,13 +2,32 @@
 
 - Gen AI stuff
 
-# Installation
+# Compilation 
 
-| OS      | Download link |
-| ------- | ------------- |
-| macOS   | T.B.U         |
-| Windows | T.B.U         |
-| Linux   | T.B.U         |
+ | OS      | Download link |
+ | ------- | ------------- |
+ | macOS   | T.B.U         |
+ | Windows | T.B.U         |
+ | Linux   | T.B.U         |
+
+
+## GPU based package 
+To take avantage of GPU's memory and computation.
+Support various GPU's library/platform.
+
+ | OS      | CUDA | VULKAN  | SYCL |
+ | ------- | ---- | ------- | ---- |
+ | Windows |      |         |      |
+ | Linux   |      |         |      |
+ | macOS   | x    | x       | x    |
+
+
+# Compilation
+
+'''
+$ # clone source code
+$ cmake -B build && cmake --build build
+'''
 
 # Quick started
 
@@ -34,7 +53,24 @@ $av_llm serve <path to module .gguf file>
 - A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
 - LLM Inference engine: by [llama.cp](https://github.com/ggerganov/llama.cpp.git)
 
+
+# Some demo
++ infill
++ rerank
++ server completion 
+
 # Models
+
+## Source Code
+### Fill-in-middle (fim) model
+
+Qwen2.5-Coder-1.5B-Q8_0-GGUF
+
+### Code instruct
+
+## General chat
+
+## List models
 
 | Model                      | ~GB     | Tags         | Linked                                                              | Remark |
 | -------------------------- | ------- | ------------ | ------------------------------------------------------------------- | ------ |

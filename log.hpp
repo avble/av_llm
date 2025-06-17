@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _AVLLM_LOG_H_
+#define _AVLLM_LOG_H_
 
 #include <cstdarg>
 #include <cstdlib>
@@ -115,3 +116,5 @@ private:
 #define AVLLM_LOG_TRACE_FUNCTION avllm::logger_function_trace x_trace_123_("", __FUNCTION__);
 #define AVLLM_TRACE_CLS_FUNC_TRACE avllm::logger_function_trace x_trace_123_(typeid(this).name(), __FUNCTION__);
 #define AVLLM_LOG_TRACE_SCOPE(xxx) avllm::logger_function_trace x_trace_123_("", xxx);
+
+#endif

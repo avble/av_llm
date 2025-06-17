@@ -1,3 +1,6 @@
+#ifndef _AVLLM_MODEL_H_
+#define _AVLLM_MODDEL_H_
+
 #include <string>
 #include <unordered_map>
 
@@ -26,3 +29,5 @@ static void pre_config_model_init()
     pre_config_model["phi-3-mini-4k"] =
         "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf";
 }
+
+#endif

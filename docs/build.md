@@ -5,6 +5,12 @@ On Windows, Ubuntu, and macOS
 $ cmake -B build . && cmake --build build
 ```
 
+## Windows CMD
+```
+call "E:\software_vs\VC\Auxiliary\Build\vcvars64.bat"
+```
+
+
 # VULKAN
 Install SDK
 + https://vulkan.lunarg.com/sdk/home#windows

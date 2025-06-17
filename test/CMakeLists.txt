@@ -8,6 +8,7 @@ set(TEST_FILE
     test_chat_template.cpp
     # test_std.cpp
     test_model.cpp
+		test_util.cpp
 )
 
 add_executable(test test_main.cpp)

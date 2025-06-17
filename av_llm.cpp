@@ -13,9 +13,14 @@ It can be used, modified.
 #include "av_connect.hpp"
 #include "helper.hpp"
 #include "index.html.gz.hpp"
-#include "log.hpp"
+// #include "log.hpp"
 #include "model.hpp"
+
 #include "utils.hpp"
+
+#include <curl/curl.h>
+#include <inttypes.h>
+#include <CLI/CLI.hpp>
 
 #include <chrono>
 #include <filesystem>
@@ -28,17 +33,12 @@ It can be used, modified.
 #include <unordered_map>
 #include <vector>
 
-#include <curl/curl.h>
-#include <inttypes.h>
-
-#include <CLI/CLI.hpp>
 
 #ifdef _MSC_VER
 #include <ciso646>
 #endif
 
-using json = nlohmann::ordered_json;
-#define MIMETYPE_JSON "application/json; charset=utf-8"
+
 std::filesystem::path home_path;
 std::filesystem::path app_path;
 
@@ -490,12 +490,12 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     }
 
     // // context initialize
-    auto me_llama_context_init = [&model]() -> llama_context * {
+    llama_context_params ctx_params = llama_context_default_params();
+    auto me_llama_context_init = [&model, &ctx_params]() -> llama_context * {
         int n_ctx                       = 2048;
-        llama_context_params ctx_params = llama_context_default_params();
         ctx_params.no_perf              = false;
-        ctx_params.n_ctx                = n_ctx;
-        ctx_params.n_batch              = n_ctx;
+        ctx_params.n_ctx                = n_ctx;  // TODO what is it??. Better another number
+        ctx_params.n_batch              = n_ctx;  // TODO what is it??. Better another number
 
         return llama_init_from_model(model, ctx_params);
     };
@@ -564,7 +564,13 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         }
     };
 
-    auto chat_sesion_get = [&chat_templates, &model, &smpl](chat_session_t & chat,
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+    if (vocab == nullptr)
+    {
+        AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
+        return -1;
+    }    
+    auto chat_sesion_get = [&chat_templates, &model, &smpl, &vocab](chat_session_t & chat,
                                                             const std::vector<llama_chat_message> & chat_messages,
                                                             std::function<void(int, std::string)> func_) -> int {
         { // get input string and apply template
@@ -596,13 +602,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         chat.chat_message_start = chat.chat_message_end;
 
         llama_token new_token;
-        const llama_vocab * vocab = llama_model_get_vocab(model);
-        if (vocab == nullptr)
-        {
-            AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
-            func_(-1, "");
-            return -1;
-        }
+        // const llama_vocab * vocab = llama_model_get_vocab(model);
 
         int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
@@ -867,6 +867,119 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     route_.post("/chat/completions", [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
     route_.post("/v1/chat/completions",
                 [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+
+    // Non-OpenAI API
+    {
+        // auto tokenized_prompts = tokenize_input_prompts(ctx_server.vocab, prompt, true, true);
+        // for (const auto & tokens : tokenized_prompts) {
+        //     // this check is necessary for models that do not add BOS token to the input
+        //     if (tokens.empty()) {
+        //         res_error(res, format_error_response("Input content cannot be empty", ERROR_TYPE_INVALID_REQUEST));
+        //         return;
+        //     }
+        // }
+        // auto res_error
+        auto fim_handler = [&vocab, &ctx_params](http::response res) -> void {
+            // check model compatibility
+            std::string is_err = [&vocab]() -> std::string {
+                if (llama_vocab_fim_pre(vocab) == LLAMA_TOKEN_NULL) {
+                    return "prefix token is missing. ";
+                }
+                if (llama_vocab_fim_suf(vocab) == LLAMA_TOKEN_NULL) {
+                    return "suffix token is missing. ";
+                }
+                if (llama_vocab_fim_mid(vocab) == LLAMA_TOKEN_NULL) {
+                    return "middle token is missing. ";
+                }
+                return "";
+            } ();
+            if (not is_err.empty()) {
+                // res_error(res, format_error_response(string_format("Infill is not supported by this model: %s", err.c_str()), ERROR_TYPE_NOT_SUPPORTED));
+                AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
+                res.result() = http::status_code::internal_error;
+                res.set_content("\"input_prefix\" is required");
+                res.end();
+                return;
+            }
+
+            json data;
+            [&data](const std::string & body) mutable {
+                try
+                {
+                    data       = json::parse(body);
+                } catch (const std::exception & ex)
+                {
+                    data       = {};
+                }
+            }(res.reqwest().body());
+
+            is_err = [&data]() -> std::string {
+                if (data.contains("prompt") && !data.at("prompt").is_string())
+                    return "can not initialize the context";
+
+                if (!data.contains("input_prefix")) 
+                    return "can not initialize the context";
+
+                if (!data.contains("input_suffix"))
+                    return "\"input_suffix\" is required";
+                
+                if (data.contains("input_extra") && !data.at("input_extra").is_array())
+                    return "\"input_extra\" must be an array of {\"filename\": string, \"text\": string}";
+
+                return "";
+            }();
+
+            if (!is_err.empty()){
+                AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
+                res.result() = http::status_code::internal_error;
+                res.set_content(is_err);
+                res.end();
+                return;
+            }
+
+            json input_extra = json_value(data, "input_extra", json::array());
+
+            [&input_extra]() -> std::string{
+                for (const auto & chunk : input_extra) {
+                    // { "text": string, "filename": string }
+                    if (!chunk.contains("text") || !chunk.at("text").is_string()) 
+                        return "extra_context chunk must contain a \"text\" field with a string value";
+
+                    // filename is optional
+                    if (chunk.contains("filename") && !chunk.at("filename").is_string())
+                        return "extra_context chunk's \"filename\" field must be a string";
+                }
+
+                return "";
+            }();
+            
+            data["input_extra"] = input_extra; // default to empty array if it's not exist
+
+            std::string prompt = json_value(data, "prompt", std::string());
+            std::vector<llama_tokens> tokenized_prompts = tokenize_input_prompts(vocab, prompt, false, true);
+            AVLLM_LOG_INFO("creating infill tasks, n_prompts = %d\n", (int) tokenized_prompts.size());
+            data["prompt"] = format_infill(
+                vocab,
+                data.at("input_prefix"),
+                data.at("input_suffix"),
+                data.at("input_extra"),
+                ctx_params.n_batch,
+                ctx_params.n_batch, // TODO: dangerous
+                ctx_params.n_batch, // TODO: dangerous
+                true,  // what is it?
+                tokenized_prompts[0]
+            );
+
+            // process inference
+
+        };
+    
+        route_.post("/fim", fim_handler);
+        route_.post("/infill", fim_handler); // for compatible with llama.cpp so that it can work with 
+
+    }
+
+    // format_infill
 
     AVLLM_LOG_INFO("Server is started at http://127.0.0.1:%d\n", srv_port);
     http::start_server(srv_port, route_);
