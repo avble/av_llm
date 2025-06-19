@@ -21,19 +21,19 @@
 			}
 		},
 
-    {
-        "name": "sycl-base",
-        "hidden": true,
-        "generator": "Ninja",
-        "binaryDir": "${sourceDir}/build-${presetName}",
-        "cacheVariables": {
-            "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-            "CMAKE_CXX_COMPILER": "icx",
-            "CMAKE_C_COMPILER": "cl",
-            "GGML_SYCL": "ON",
-            "CMAKE_INSTALL_RPATH": "$ORIGIN;$ORIGIN/.."
-        }
-    },
+		{
+			"name": "sycl-base",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/build-${presetName}",
+			"cacheVariables": {
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+				"CMAKE_CXX_COMPILER": "icx",
+				"CMAKE_C_COMPILER": "cl",
+				"GGML_SYCL": "ON",
+				"CMAKE_INSTALL_RPATH": "$ORIGIN;$ORIGIN/.."
+			}
+		},
 
 		{ "name": "debug",    "hidden": true, "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
 		{ "name": "release",  "hidden": true, "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
@@ -72,15 +72,15 @@
 		},
 
 		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "debug" ] },
-    		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "reldbg" ] },
-		
-		{ "name": "x64-windows-msvc-debug", "inherits": [ "base-ninja", "debug" ] },
-		{ "name": "x64-windows-msvc-release", "inherits": [ "base-ninja", "reldbg" ] },
+		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "reldbg" ] },
+
+		{ "name": "x64-windows-msvc-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-windows-msvc-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
 
 		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama", "debug"] },
 		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama", "release"] },
 
-    { "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "debug" ] },
-    { "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "release" ] }
+		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "debug" ] },
+		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "release" ] }
 	]
 }

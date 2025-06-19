@@ -5,7 +5,7 @@
 # Compilation 
 
  | OS      | Download link |
- | ------- | ------------- |
+ |---------|---------------|
  | macOS   | T.B.U         |
  | Windows | T.B.U         |
  | Linux   | T.B.U         |
@@ -15,11 +15,11 @@
 To take avantage of GPU's memory and computation.
 Support various GPU's library/platform.
 
- | OS      | CUDA | VULKAN  | SYCL |
- | ------- | ---- | ------- | ---- |
- | Windows |      |         |      |
- | Linux   |      |         |      |
- | macOS   | x    | x       | x    |
+ | OS      | CUDA | VULKAN | SYCL |
+ |---------|------|--------|------|
+ | Windows |      |        |      |
+ | Linux   |      |        |      |
+ | macOS   | x    | x      | x    |
 
 
 # Compilation
@@ -72,16 +72,11 @@ Qwen2.5-Coder-1.5B-Q8_0-GGUF
 
 ## List models
 
-| Model                      | ~GB     | Tags         | Linked                                                              | Remark |
-| -------------------------- | ------- | ------------ | ------------------------------------------------------------------- | ------ |
-| Devstral-Small-2505 (gguf) | 13 GB   | coding       | https://huggingface.co/mistralai/Devstral-Small-2505_gguf/tree/main |        |
-| Gema 2B                    | 10Gb    |              | https://huggingface.co/google/gemma-1.1-2b-it-GGUF/tree/main        |        |
-| Gemma-3 4b                 | 3.16GB  | general chat | https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/tree/main | v      |
-| Phi-4                      | > 3.5GB |              | https://huggingface.co/microsoft/phi-4-gguf/tree/main               | x      |
-| Phi-3 Inst                 | 2.2 GB  |              | https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf        | x      |
-| Binet                      | 1.19G   | general chat | https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/tree/main  | v      |
-| Qwen3-4B                   | ~3 Gb   | coding       | https://huggingface.co/Qwen/Qwen3-4B-GGUF                           | v      |
-|                            |         |              |                                                                     |        |
+| Model                                                                                             | ~GB   | Tags          | Remark  |
+|---------------------------------------------------------------------------------------------------|-------|---------------|---------|
+| (Qwen3-4B)[https://huggingface.co/Qwen/Qwen3-4B-GGUF]                                             | ~3 Gb | coding, think | Q4, K_M |
+| (Qwen2.5-Coder-3B-Q8_0-GGUF)[https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF] |       | coding, FIM   |         |
+|                                                                                                   |       |               |         |
 
 # Supported model
 

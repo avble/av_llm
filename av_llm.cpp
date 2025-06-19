@@ -13,7 +13,6 @@ It can be used, modified.
 #include "av_connect.hpp"
 #include "helper.hpp"
 #include "index.html.gz.hpp"
-// #include "log.hpp"
 #include "model.hpp"
 
 #include "utils.hpp"
@@ -32,6 +31,16 @@ It can be used, modified.
 #include <thread>
 #include <unordered_map>
 #include <vector>
+
+#ifdef _WIN32
+#include <dbghelp.h>
+#include <windows.h>
+#pragma comment(lib, "dbghelp.lib")
+#else
+#include <csignal>
+#include <execinfo.h>
+#include <unistd.h>
+#endif
 
 #ifdef _MSC_VER
 #include <ciso646>
@@ -448,9 +457,10 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
                 return 0;
             }
 
-            std::string out(buf, n);
-            printf("%s", out.c_str());
-            fflush(stdout);
+            // std::string out(buf, n);
+            // std::cout << std::hex << out << std::endl;
+            //  #printf("%x", out.c_str());
+            //  fflush(stdout);
 
             batch = llama_batch_get_one(&new_token, 1);
         }
@@ -466,7 +476,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     llama_free(ctx);
     llama_model_free(model);
     return 0;
-};
+}; // end of chat handler
 
 auto server_cmd_handler = [](std::string run_line) { // run serve
     std::string model_path;
@@ -578,7 +588,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     }
     auto chat_sesion_get = [&chat_templates, &model, &smpl, &vocab](chat_session_t & chat,
                                                                     const std::vector<llama_chat_message> & chat_messages,
-                                                                    std::function<void(int, std::string)> func_) -> int {
+                                                                    std::function<int(int, std::string)> func_) -> int {
         { // get input string and apply template
 
             auto chat_tmpl = common_chat_templates_source(chat_templates.get());
@@ -657,10 +667,12 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             }
 
             std::string out(buf, n);
-            AVLLM_LOG_INFO("%s", out.c_str());
-            // fflush(stdout);
 
-            func_(0, out);
+            if (func_(0, out) < 0)
+            {
+                AVLLM_LOG_WARN("%s, failed to convert a token \n", __func__);
+                break;
+            }
 
             batch = llama_batch_get_one(&new_token, 1);
         }
@@ -765,7 +777,9 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                 res.event_source_start();
                 auto get_text_hdl = [&](int rc, const std::string & text) -> int {
                     if (rc == 0)
+                    {
                         res.chunk_write("data: " + oai_make_stream(text));
+                    }
 
                     return 0;
                 };
@@ -778,7 +792,6 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         }
         else
         {
-            std::cout << "should handle the end of chunk message" << std::endl;
             res.result() = http::status_code::internal_error;
             res.end();
         }
@@ -996,6 +1009,102 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     return 0;
 };
 
+#ifdef _WIN32
+
+LONG WINAPI ExceptionHandler(EXCEPTION_POINTERS * ExceptionInfo)
+{
+    std::cerr << "Unhandled exception caught!\n";
+
+    CONTEXT * context = ExceptionInfo->ContextRecord;
+
+    STACKFRAME64 stack;
+    memset(&stack, 0, sizeof(STACKFRAME64));
+
+#ifdef _M_IX86
+    DWORD machineType      = IMAGE_FILE_MACHINE_I386;
+    stack.AddrPC.Offset    = context->Eip;
+    stack.AddrFrame.Offset = context->Ebp;
+    stack.AddrStack.Offset = context->Esp;
+#elif _M_X64
+    DWORD machineType      = IMAGE_FILE_MACHINE_AMD64;
+    stack.AddrPC.Offset    = context->Rip;
+    stack.AddrFrame.Offset = context->Rsp;
+    stack.AddrStack.Offset = context->Rsp;
+#else
+#error "Unsupported architecture"
+#endif
+
+    stack.AddrPC.Mode    = AddrModeFlat;
+    stack.AddrFrame.Mode = AddrModeFlat;
+    stack.AddrStack.Mode = AddrModeFlat;
+
+    HANDLE process = GetCurrentProcess();
+    HANDLE thread  = GetCurrentThread();
+
+    SymInitialize(process, NULL, TRUE);
+
+    for (int i = 0; i < 25; ++i)
+    {
+        if (!StackWalk64(machineType, process, thread, &stack, context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
+        {
+            break;
+        }
+
+        if (stack.AddrPC.Offset == 0)
+        {
+            break;
+        }
+
+        DWORD64 addr = stack.AddrPC.Offset;
+        char buffer[sizeof(SYMBOL_INFO) + 256];
+        SYMBOL_INFO * symbol = (SYMBOL_INFO *) buffer;
+        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+        symbol->MaxNameLen   = 255;
+
+        if (SymFromAddr(process, addr, 0, symbol))
+        {
+            std::cout << "  " << symbol->Name << " at 0x" << std::hex << addr << std::dec << "\n";
+        }
+        else
+        {
+            std::cout << "  Unknown function at 0x" << std::hex << addr << std::dec << "\n";
+        }
+    }
+
+    SymCleanup(process);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+#else
+void segfault_handler(int signum)
+{
+    std::cerr << "Caught segmentation fault (signal " << signum << ").\n";
+
+    const int max_frames = 64;
+    void * addrlist[max_frames];
+
+    // Retrieve current stack addresses
+    int addrlen = backtrace(addrlist, max_frames);
+
+    if (addrlen == 0)
+    {
+        std::cerr << "  <empty stack>\n";
+        std::exit(EXIT_FAILURE);
+    }
+
+    // Print out the backtrace to stderr
+    std::cerr << "Stack trace:\n";
+    char ** symbollist = backtrace_symbols(addrlist, addrlen);
+    for (int i = 0; i < addrlen; i++)
+    {
+        std::cerr << symbollist[i] << "\n";
+    }
+
+    free(symbollist);
+    std::exit(EXIT_FAILURE);
+}
+#endif
+
 int main(int argc, char ** argv)
 {
 
@@ -1027,6 +1136,12 @@ int main(int argc, char ** argv)
         AVLLM_LOG_ERROR("%s\n", "error systax. Please refer to manual");
         exit(0);
     }
+
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(ExceptionHandler);
+#else
+    std::signal(SIGSEGV, segfault_handler);
+#endif
 
     pre_config_model_init();
 
@@ -1102,7 +1217,7 @@ int main(int argc, char ** argv)
     CLI::App app{ "av_llm - CLI program" };
     bool version_flag = false;
     app.add_flag("-v,--version", version_flag, "show version");
-    app.add_option("-c,--nctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
+    app.add_option("-c,--n_ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
     app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
 
     // ---- MODEL command ----
@@ -1167,14 +1282,16 @@ int main(int argc, char ** argv)
     // ---- CHAT logic ----
     if (*chat)
     {
-        chat_cmd_handler(chat_model_path);
+        // chat_cmd_handler(chat_model_path);
+        chat_serve_caller(argv[2], chat_cmd_handler);
         return 0;
     }
 
     // ---- SERVE logic ----
     if (*serve)
     {
-        server_cmd_handler(serve_model_path);
+        // server_cmd_handler(serve_model_path);
+        chat_serve_caller(argv[2], server_cmd_handler);
         return 0;
     }
 
