@@ -19,6 +19,7 @@ build
 ``` sh
 enable GGML_VULKAN=ON
 ```
+set Vulkan_SDK=C:\VulkanSDK\1.4.313.2
 
 Notes
 - Nvidia GPU

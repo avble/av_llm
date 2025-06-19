@@ -46,6 +46,23 @@ int main(int argc, char ** argv)
     llama_numa_init(params.numa);
 
 
+    LOG_INF("%s: load the model and apply lora adapter, if any\n", __func__);
+    common_init_result llama_init = common_init_from_params(params);
+
+    llama_model *model = llama_init.model.get();
+    llama_context *ctx = llama_init.context.get();
+
+    if (model == nullptr) {
+        LOG_ERR("%s: error: unable to load model\n", __func__);
+        return -1;
+    }
+    if (ctx == nullptr) {
+        LOG_ERR("%s: error: failed to create the llama_context\n", __func__);
+        return -1;
+    }
+
+
+
     // Threadpool/Backend (ggml) setup (refactored to match llama.cpp main.cpp)
     auto *cpu_dev = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
     if (!cpu_dev) {
@@ -65,22 +82,6 @@ int main(int argc, char ** argv)
         return 1;
     }
 
-
-    // Model and context initialization (using helpers)
-    LOG_INF("%s: load the model and apply lora adapter, if any\n", __func__);
-    common_init_result llama_init = common_init_from_params(params);
-
-    llama_model *model = llama_init.model.get();
-    llama_context *ctx = llama_init.context.get();
-
-    if (model == nullptr) {
-        LOG_ERR("%s: error: unable to load model\n", __func__);
-        return 1;
-    }
-    if (ctx == nullptr) {
-        LOG_ERR("%s: error: failed to create the llama_context\n", __func__);
-        return -1;
-    }
 
 
     // Attach threadpool to context

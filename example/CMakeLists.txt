@@ -16,10 +16,10 @@ add_llm_example(avllm_gen)
 add_llm_example(avllm_simple)
 add_llm_example(avllm_chat)
 
-add_executable(avllm_server avllm_server.cpp)
-if (MSVC)
-	target_compile_options(avllm_server PRIVATE /bigobj)
-endif()
-
-target_link_libraries(avllm_server PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
-target_include_directories(avllm_server PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR} )
+# add_executable(avllm_server avllm_server.cpp)
+# if (MSVC)
+# 	target_compile_options(avllm_server PRIVATE /bigobj)
+# endif()
+# 
+# target_link_libraries(avllm_server PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect)
+# target_include_directories(avllm_server PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR} )
