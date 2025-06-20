@@ -191,6 +191,8 @@ TEST_CASE("test_fim_model")
     {
 
         INFO("step: decoding prompt");
+#define TC 1
+#if TC == 1
         std::string prompt = R"(<|fim_prefix|>def quicksort(arr):
     if len(arr) <= 1:
         return arr
@@ -199,7 +201,7 @@ TEST_CASE("test_fim_model")
     middle = [x for x in arr if x == pivot]
     right = [x for x in arr if x > pivot]
     return quicksort(left) + middle + quicksort(right)<|fim_middle|>)";
-
+#endif
         const llama_vocab * vocab = llama_model_get_vocab(model);
         const int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);

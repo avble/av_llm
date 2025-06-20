@@ -1,6 +1,7 @@
 #ifndef _AVLLM_UTILS_H_
 #define _AVLLM_UTILS_H_
 
+#include "_deps/llama_cpp-src/src/llama-vocab.h"
 #include "common.h"
 #include "llama.h"
 #include "log.h"
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
@@ -22,7 +24,7 @@ using json = nlohmann::ordered_json;
 
 // sampling
 
-void llama_sampler_print(const llama_sampler * smpl)
+static void llama_sampler_print(const llama_sampler * smpl)
 {
     int n_samplers = llama_sampler_chain_n(smpl);
     for (int i = 0; i < n_samplers; i++)
@@ -32,12 +34,29 @@ void llama_sampler_print(const llama_sampler * smpl)
     }
 }
 
-struct HumanReadable
+static void llama_token_print(const llama_vocab * vocab, llama_tokens & tokens)
+{
+    std::cout << "tokens: \n";
+    for (auto token : tokens)
+    {
+        char buf[120];
+        int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
+        if (n < 0)
+        {
+            printf("fail tokenize \n");
+        }
+        std::string s(buf, n);
+        std::cout << s;
+    }
+    std::cout << std::endl;
+}
+
+struct human_readable
 {
     std::uintmax_t size{};
 
     template <typename Os>
-    friend Os & operator<<(Os & os, HumanReadable hr)
+    friend Os & operator<<(Os & os, human_readable hr)
     {
         int i{};
         double mantissa = hr.size;

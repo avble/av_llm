@@ -3,7 +3,6 @@
 It can be used, modified.
 */
 
-#include "arg.h"
 #include "chat.h"
 #include "common.h"
 #include "llama.h"
@@ -193,7 +192,7 @@ auto model_cmd_handler = [](std::string model_line) {
     };
 
     auto model_print = [](const std::filesystem::path & model_path, const std::uintmax_t & size) {
-        std::cout << std::setw(70) << "|" + model_path.generic_string() << std::setw(1) << '|' << HumanReadable{ size } << "\n";
+        std::cout << std::setw(70) << "|" + model_path.generic_string() << std::setw(1) << '|' << human_readable{ size } << "\n";
     };
 
     auto model_print_footer = []() {
@@ -1027,8 +1026,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             std::vector<llama_tokens> tokenized_prompts = tokenize_input_prompts(vocab, prompt, false, true);
             AVLLM_LOG_INFO("creating infill tasks, n_prompts = %d\n", (int) tokenized_prompts.size());
             // hacking
-            std::string input_suffix = data.at("input_suffix");
-#if 1
+            std::string input_suffix = data.at("input_suffix").get<std::string>();
             {
                 // clean up the \n at the begging
                 auto pos = input_suffix.begin();
@@ -1036,13 +1034,18 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                     pos++;
                 input_suffix = std::string(pos, input_suffix.end());
             }
-#endif
 
-            auto tokens = format_infill(vocab, data.at("input_prefix"), input_suffix, data.at("input_extra"), ctx_params.n_batch,
+            std::string input_prefix = data.at("input_prefix").get<std::string>();
+
+            AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
+
+            auto tokens = format_infill(vocab, input_prefix, input_suffix, data.at("input_extra"), ctx_params.n_batch,
                                         ctx_params.n_batch, // TODO: dangerous
                                         ctx_params.n_batch, // TODO: dangerous
-                                        true,               // what is it?
-                                        tokenized_prompts[0]);
+                                        false, tokenized_prompts[0]);
+            {
+                llama_token_print(vocab, tokens);
+            }
 
             try
             {
