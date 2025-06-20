@@ -5,10 +5,10 @@ project(test LANGUAGES C CXX)
 include(external.cmake)
 
 set(TEST_FILE 
-    test_chat_template.cpp
+    test_llamacpp.cpp
     # test_std.cpp
     test_model.cpp
-		test_util.cpp
+		#test_util.cpp
 )
 
 add_executable(test test_main.cpp)
