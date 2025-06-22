@@ -18,7 +18,6 @@ It can be used, modified.
 #include "utils.hpp"
 
 #include <CLI/CLI.hpp>
-#include <curl/curl.h>
 #include <inttypes.h>
 
 #include <chrono>
@@ -46,9 +45,7 @@ It can be used, modified.
 #include <ciso646>
 #endif
 
-std::filesystem::path home_path;
-std::filesystem::path app_path;
-
+// type definition
 struct xoptions
 {
     xoptions()
@@ -72,9 +69,20 @@ struct xoptions
     // server
     int port;
     int ngl;
+
+    // others
+    std::string model_url_or_alias;
 };
 
+// prototype
+static void server_cmd_handler(std::string run_line);
+static void chat_cmd_handler (std::string model_line);
+static void model_cmd_handler(std::string model_line);
+
+//global variable
 static xoptions xoptions_;
+std::filesystem::path home_path;
+std::filesystem::path app_data_path;
 
 static auto ltrim = [](std::string & str) {
     int i = 0;
@@ -83,109 +91,183 @@ static auto ltrim = [](std::string & str) {
     str.erase(0, i);
 };
 
-// curl helper function
-static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
+int main(int argc, char ** argv)
 {
-    std::ofstream * of = static_cast<std::ofstream *>(stream);
-    try
     {
-        of->write((const char *) ptr, size * nmemb);
-        return size * nmemb;
-    } catch (const std::exception & ex)
+#ifdef _WIN32
+        home_path = std::getenv("USERPROFILE");
+        if (home_path.empty())
+            home_path = std::getenv("APPDATA"); // Fallback to APPDATA
+#else
+        home_path = std::getenv("HOME") ? std::filesystem::path(std::getenv("HOME")) : std::filesystem::path();
+#endif
+    }
+
+    if (home_path.empty())
     {
+        AVLLM_LOG_ERROR("%s: \n", "could not find the homepath");
+        exit(1);
+    }
+
+    app_data_path = home_path / ".av_llm";
+    AVLLM_LOG_DEBUG("home-path: %s -- app-path: %s \n", home_path.generic_string().c_str(), app_data_path.generic_string().c_str());
+
+    pre_config_model_init();
+
+    auto process_chat_or_serve = [](std::function<void(std::string)> chat_or_serve_func) -> int { // handle the syntax
+        {
+            // process if the .gguf file
+            // AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, xoptions_.model_url_or_alias.c_str());
+            std::filesystem::path model_filename = xoptions_.model_url_or_alias;
+            if (model_filename.extension() == ".gguf")
+            {
+                AVLLM_LOG_DEBUG("%s:%d - %s:%s \n", __func__, __LINE__, app_data_path.generic_string().c_str(), model_filename.c_str());
+
+                std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
+                    : std::filesystem::is_regular_file(app_data_path / model_filename)
+                    ? std::optional<std::filesystem::path>(app_data_path / model_filename)
+                    : std::nullopt;
+
+                if (model_path.has_value())
+                {
+                    AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_path.value().generic_string().c_str());
+                    chat_or_serve_func(model_path.value().generic_string());
+                }
+                AVLLM_LOG_DEBUG("%s:%d \n", __func__, __LINE__);
+
+                return 0;
+            }
+        }
+
+        {
+            // handle precofig model
+            if (std::string url = pre_config_model[xoptions_.model_url_or_alias]; url != "")
+            {
+                AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
+
+                std::filesystem::path model_filename = [&url]() -> std::filesystem::path {
+                    auto last_slash = url.find_last_of("/");
+                    if (last_slash != std::string::npos)
+                        return url.substr(last_slash + 1);
+                    return "";
+                }();
+
+                if (not std::filesystem::is_regular_file(app_data_path / model_filename))
+                {   // do not have file in local, donwload it
+                    AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
+                                    model_filename.generic_string().c_str(), url.c_str());
+
+                    downnload_file_and_write_to_file(url, model_filename);
+                }
+                else
+                    AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
+                                    model_filename.generic_string().c_str());
+
+                chat_or_serve_func((app_data_path / model_filename).generic_string());
+
+                return 0;
+            }
+        }
+        { // todo: handle the descrition (http://)
+        }
+
+        return 0;
+    };
+
+    CLI::App app{ "av_llm - CLI program" };
+    bool version_flag = false;
+    app.add_flag("-v,--version", version_flag, "show version");
+
+    // context
+    app.add_option("--ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
+    app.add_option("--batch", xoptions_.n_batch, "Number of batch")->default_val(std::to_string(xoptions_.n_batch));
+
+    //
+    app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
+
+    // sampling options
+    app.add_option("--repeat-penalty", xoptions_.repeat_penalty, "Reapeat penanty")
+        ->default_val(std::to_string(xoptions_.repeat_penalty));
+
+    // ---- MODEL command ----
+    auto model = app.add_subcommand("model", "Model operations");
+
+    // model ls subcommand
+    auto model_ls = model->add_subcommand("ls", "List all models");
+
+    // model pull subcommand
+    auto model_pull = model->add_subcommand("pull", "Pull a model (url: string)");
+    model_pull->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model URL")->required();
+
+    // model del subcommand
+    auto model_del = model->add_subcommand("del", "Delete a model (model: string)");
+    model_del->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model name")->required();
+
+    // ---- CHAT command ----
+    auto chat = app.add_subcommand("chat", "Start an interactive chat");
+    chat->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path")->required();
+
+    // ---- SERVE command ----
+    auto serve = app.add_subcommand("serve", "Serve model");
+    serve->add_option("-p,--port", xoptions_.port, "Serve port");
+    serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path")->required();
+
+    CLI11_PARSE(app, argc, argv);
+
+    if (version_flag)
+    {
+        std::cout << "av_llm version 0.1.0" << std::endl;
         return 0;
     }
-}
 
-// Progress callback (older interface)
-int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, curl_off_t /*ultotal*/, curl_off_t /*ulnow*/)
-{
-    if (dltotal == 0)
-        return 0; // avoid division by zero
-
-    double progress = (double) dlnow / (double) dltotal * 100.0;
-    // std::cout << "\rDownload progress: " << progress << "% (" << dlnow << "/" << dltotal << " bytes)" << std::flush;
-    std::cout << "\033[2K\r[";
-    for (int i = 0; i < 100; i++)
-        std::cout << ((i < (int) progress) ? "#" : ".");
-    std::cout << "] " << (int) progress << "%" << std::flush;
-
-    return 0; // return non-zero to abort transfer
-}
-
-// model utils
-auto model_pull = [](std::string model_description) {
-    AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", model_description.c_str());
-    CURL * curl;
-    CURLcode res;
-
-    std::string url;
-
-    [&url, &model_description]() {
-        if (pre_config_model.find(model_description) != pre_config_model.end())
+    // ---- MODEL logic ----
+    if (*model)
+    {
+        if (*model_ls)
         {
-            url = pre_config_model[model_description];
-            AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
+            model_cmd_handler("ls");
+        }
+        else if (*model_pull)
+        {
+            model_cmd_handler("pull");
+        }
+        else if (*model_del)
+        {
+            model_cmd_handler("del");
         }
         else
-            url = model_description;
-    }();
-
-    std::string outfilename = [](const std::string & url) -> std::string {
-        auto last_slash = url.find_last_of('/');
-        if (last_slash == std::string::npos)
-            return url;
-        return url.substr(last_slash + 1);
-    }(url);
-
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-    if (curl)
-    {
-
-        auto file_path = app_path / outfilename;
-        // open a file
-        std::ofstream of(file_path.c_str());
-
-        if (of.is_open())
         {
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
-            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
-            // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-
-            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-
-            // Set progress callback
-            curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
-            curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
-
-            // follow redirect
-            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-            res = curl_easy_perform(curl);
-            if (res != CURLE_OK)
-                AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-
-            of.close();
+            std::cerr << "Specify a model subcommand: ls, pull <url>, or del <model>\n";
+            model->help();
         }
-
-        AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
-        curl_easy_cleanup(curl);
+        return 0;
     }
-    else
+
+    // ---- CHAT logic ----
+    if (*chat)
     {
-        AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
+        process_chat_or_serve(chat_cmd_handler);
+        return 0;
     }
-    curl_global_cleanup();
-};
+    // ---- SERVE logic ----
+    if (*serve)
+    {
+        process_chat_or_serve(server_cmd_handler);
+        return 0;
+    }
 
-// CLI handlers
-auto model_cmd_handler = [](std::string model_line) {
-    std::filesystem::create_directories(app_path);
+#if 0
+    if (argc > 1)
+    {
+        process_chat_or_serve(argv[1], chat_cmd_handler);
+    }
+#endif
+
+    std::cout << app.help() << std::endl;
+}
+
+static void model_cmd_handler(std::string sub_cmd){
+    std::filesystem::create_directories(app_data_path);
 
     static auto get_file_name_from_url = [](const std::string url) -> std::string {
         auto last_slash = url.find_last_of('/');
@@ -198,7 +280,7 @@ auto model_cmd_handler = [](std::string model_line) {
 
     auto model_print_header = []() {
         std::cout << std::left << std::setw(70) << "|Model path" << std::setw(1) << '|' << "Size" << '\n';
-        std::cout << std::string(78, '-') << '\n'; // Increased from 58 to 78 to match new width
+        std::cout << std::string(78, '-') << '\n';
     };
 
     auto model_print = [](const std::filesystem::path & model_path, const std::uintmax_t & size) {
@@ -206,12 +288,25 @@ auto model_cmd_handler = [](std::string model_line) {
     };
 
     auto model_print_footer = []() {
-        std::cout << std::string(77, '-') << std::endl; // Increased from 57 to 77 to match new width
+        std::cout << std::string(77, '-') << std::endl; 
+    };
+
+    auto model_pull = []() {
+        AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", xoptions_.model_url_or_alias.c_str());
+        
+        std::string url = pre_config_model[xoptions_.model_url_or_alias] == ""? xoptions_.model_url_or_alias:  pre_config_model[xoptions_.model_url_or_alias];
+        std::string out_file_path = [](const std::string & url) -> std::string {
+            auto last_slash = url.find_last_of('/');
+            if (last_slash == std::string::npos)
+                return url;
+            return url.substr(last_slash + 1);
+        }(url);
+        downnload_file_and_write_to_file(url, out_file_path);
     };
 
     auto model_ls = [&model_print_header, &model_print, &model_print_footer]() {
         std::vector<std::filesystem::path> search_paths = {
-            app_path // i.e. ~/.av_llm
+            app_data_path // i.e. ~/.av_llm
         };
 
         model_print_header();
@@ -234,44 +329,22 @@ auto model_cmd_handler = [](std::string model_line) {
         model_print_footer();
     };
 
-    auto model_del = [](std::string model_name) { std::filesystem::remove(app_path / model_name); };
+    auto model_del = []() { std::filesystem::remove(app_data_path / xoptions_.model_url_or_alias); };
 
-    std::regex model_pattern(R"((pull|del|ls)(.*))");
-    std::smatch smatch_;
+    if (sub_cmd == "pull")
+        model_pull();
+    else if (sub_cmd == "del")
+        model_del();
+    else if (sub_cmd == "ls")
+        model_ls();
 
-    if (std::regex_match(model_line, smatch_, model_pattern))
-    {
-        AVLLM_LOG_DEBUG("[DEBUG] %s: %d: %s\n", "model_cmd_handler", __LINE__, model_line.c_str());
-        std::string sub_cmd    = smatch_[1];
-        std::string model_path = smatch_[2];
-        ltrim(model_path);
-
-        if (sub_cmd == "pull")
-        {
-            model_pull(model_path);
-        }
-        else if (sub_cmd == "del")
-        {
-            model_del(model_path);
-        }
-        else if (sub_cmd == "ls")
-        {
-            model_ls();
-        }
-        else
-            AVLLM_LOG_ERROR("%s: Could not valid command: %s\n", __func__, sub_cmd.c_str());
-    }
-    else
-        AVLLM_LOG_ERROR("%s: Wrong syntax\n", __func__);
 };
 
-auto chat_cmd_handler = [](std::string model_line) -> int {
+static void chat_cmd_handler (std::string model_line){
     std::filesystem::path model_path;
-
     std::regex chat_pattern(R"(([^\s]+)(.*))");
-
     std::smatch smatch_;
-
+    bool silent = false;
     if (std::regex_match(model_line, smatch_, chat_pattern))
     {
         // Step 1: Check if smatch_[1] is regular .gguf file (absolute or relative to current dir)
@@ -281,55 +354,49 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
             model_path = input_path;
             AVLLM_LOG_DEBUG("%s: Using model from direct path: %s\n", __func__, model_path.generic_string().c_str());
         }
-        // Step 2: Check in app_path (i.e ~/.av_llm/ or C:/home/av/.av_llm)
-        else if (std::filesystem::is_regular_file(app_path / input_path) && (app_path / input_path).extension() == ".gguf")
+        // Step 2: Check in app_data_path (i.e ~/.av_llm/ or C:/home/av/.av_llm)
+        else if (std::filesystem::is_regular_file(app_data_path / input_path) && (app_data_path / input_path).extension() == ".gguf")
         {
-            model_path = app_path / input_path;
+            model_path = app_data_path / input_path;
             AVLLM_LOG_DEBUG("%s: Using model from user directory: %s\n", __func__, model_path.generic_string().c_str());
         }
         else
         {
             AVLLM_LOG_ERROR("%s: Could not find valid .gguf model file: %s\n", __func__, input_path.generic_string().c_str());
-            return -1;
+            return;
         }
     }
     else
     {
         AVLLM_LOG_ERROR("%s: Invalid model path format\n", __func__);
-        return -1;
+        return;
     }
-    AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
     ggml_backend_load_all();
-
-    AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
 
     // model initialized
     llama_model * model = [&model_path]() -> llama_model * {
-        AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
         llama_model_params model_params = llama_model_default_params();
-        // model_params.n_gpu_layers       = xoptions_.ngl;
-        AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
+        model_params.n_gpu_layers       = xoptions_.ngl;
         return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
     }();
-    AVLLM_LOG_DEBUG("%s:%d\n", __func__, __LINE__);
     if (model == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
-        return 1;
+        return;
     }
 
     // context initialize
     llama_context * ctx = [&model]() -> llama_context * {
         llama_context_params ctx_params = llama_context_default_params();
         ctx_params.no_perf              = false;
-        // ctx_params.n_ctx                = xoptions_.n_ctx;
-        // ctx_params.n_batch              = xoptions_.n_ctx;
+        ctx_params.n_ctx                = xoptions_.n_ctx;
+        ctx_params.n_batch              = xoptions_.n_batch;
         return llama_init_from_model(model, ctx_params);
     }();
     if (ctx == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: failed to create the llama_context\n", __func__);
-        return -1;
+        return;
     }
 
     // initialize the sampler
@@ -343,8 +410,9 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     if (smpl == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-        return -1;
+        return;
     }
+    if (!silent)
     {
         llama_sampler_print(smpl);
     }
@@ -353,7 +421,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     if (chat_tmpl == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: could no accept the template is null\n", __func__);
-        return -1;
+        return;
     }
     std::vector<llama_chat_message> chat_messages;
     std::vector<char> chat_message_output(llama_n_ctx(ctx));
@@ -387,7 +455,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
             if (len < 0)
             {
                 AVLLM_LOG_ERROR("%s: error: failed to apply chat template", __func__);
-                return 1;
+                return;
             }
 
             chat_message_end = len;
@@ -407,7 +475,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
         if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), is_first, true) < 0)
         {
             AVLLM_LOG_ERROR("%s: failed to tokenize the prompt \n", __func__);
-            exit(-1);
+            return;
         }
 
         if (false)
@@ -421,7 +489,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
                 if (n < 0)
                 {
                     AVLLM_LOG_ERROR("%s: error: failed to tokenize \n", __func__);
-                    exit(-1);
+                    return;
                 }
                 std::string s(buf, n);
                 std::cout << s;
@@ -440,13 +508,13 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
             if (n_ctx_used + batch.n_tokens > n_ctx)
             {
                 AVLLM_LOG_WARN("%s: the context is exceeded. \n", __func__);
-                return -1;
+                return;
             }
 
             if (llama_decode(ctx, batch))
             {
                 AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
-                return -1;
+                return;
             }
 
             new_token = llama_sampler_sample(smpl, ctx, -1);
@@ -460,14 +528,13 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
             if (n < 0)
             {
                 AVLLM_LOG_ERROR("%s, failed to convert a token \n", __func__);
-                return 0;
+                return;
             }
 
             // std::string out(buf, n);
             // std::cout << std::hex << out << std::endl;
             //  #printf("%x", out.c_str());
             //  fflush(stdout);
-
             batch = llama_batch_get_one(&new_token, 1);
         }
     }
@@ -481,26 +548,23 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
     llama_sampler_free(smpl);
     llama_free(ctx);
     llama_model_free(model);
-    return 0;
 }; // end of chat handler
 
-auto server_cmd_handler = [](std::string run_line) { // run serve
+
+void server_cmd_handler(std::string run_line) { 
     std::string model_path;
-
     std::regex chat_pattern(R"(([^\s]+)(.*))");
-
     std::smatch smatch_;
+    bool silent = true;
 
     if (std::regex_match(run_line, smatch_, chat_pattern))
     {
         model_path = smatch_[1];
     }
     if (model_path == "")
-        return -1;
+        return;
 
     ggml_backend_load_all();
-
-    // model initialized
     llama_model * model = [&model_path]() -> llama_model * {
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers       = xoptions_.ngl;
@@ -509,28 +573,26 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     if (model == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
-        return 1;
+        return;
     }
+
     const llama_vocab * vocab = llama_model_get_vocab(model);
     if (vocab == nullptr)
     {
         AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
-        exit(-1);
+        return;
     }
-
     // // context initialize
     llama_context_params ctx_params = llama_context_default_params();
     auto me_llama_context_init      = [&model, &ctx_params]() -> llama_context * {
         ctx_params.no_perf = false;
         ctx_params.n_ctx   = xoptions_.n_ctx;
         ctx_params.n_batch = xoptions_.n_batch;
-
         return llama_init_from_model(model, ctx_params);
     };
 
     // chat template
     auto chat_templates = common_chat_templates_init(model, "");
-
     try
     {
         common_chat_format_example(chat_templates.get(), false);
@@ -543,7 +605,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             __func__);
         chat_templates = common_chat_templates_init(model, "chatml");
     }
-    if (false)
+    if (!silent)
     {
         AVLLM_LOG_INFO("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
         AVLLM_LOG_INFO("%s: chat example: %s \n", __func__, common_chat_format_example(chat_templates.get(), false).c_str());
@@ -560,11 +622,12 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
     if (smpl == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-        return -1;
+        return;
     }
+    if (!silent)
     {
         printf("[DEBUG] llama samplers start. \n");
-        // llama_sampler_print(smpl);
+        llama_sampler_print(smpl);
         printf("[DEBUG] llama samplers end.\n");
     }
 
@@ -740,6 +803,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         {
             chat_type = CHAT_TYPE_STREAM;
         }
+
 
         if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
         {
@@ -938,10 +1002,9 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
 
         static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &vocab, &ctx_params](http::response res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
-						bool silent = true;
-//						bool silent = false;
-						if (!silent)
-	            AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
+            bool silent = true;
+            if (!silent)
+                AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
 
             // check model compatibility
             std::string is_err = [&vocab]() -> std::string {
@@ -1045,14 +1108,15 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                 return;
             }
 
-						if (!silent)
-             AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
+            if (!silent)
+                AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
 
             int n_predict = json_value(body_js, "n_predict", 128);
 
             auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), ctx_params.n_batch, n_predict,
                                         ctx_params.n_ctx, false, tokenized_prompts[0]);
-            if(!silent){
+            if (!silent)
+            {
                 llama_token_print(vocab, tokens);
             }
 
@@ -1132,315 +1196,10 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         route_.post("/infill", [](http::response res) { std::thread{ fim_handler, std::move(res) }.detach(); });
     }
 
-    // format_infill
-
     AVLLM_LOG_INFO("Server is started at http://127.0.0.1:%d\n", xoptions_.port);
+
     http::start_server(xoptions_.port, route_);
-
-    LOG("\n");
-
+  
     llama_model_free(model);
-    return 0;
 };
 
-#ifdef _WIN32
-
-LONG WINAPI ExceptionHandler(EXCEPTION_POINTERS * ExceptionInfo)
-{
-    std::cerr << "Unhandled exception caught!\n";
-
-    CONTEXT * context = ExceptionInfo->ContextRecord;
-
-    STACKFRAME64 stack;
-    memset(&stack, 0, sizeof(STACKFRAME64));
-
-#ifdef _M_IX86
-    DWORD machineType      = IMAGE_FILE_MACHINE_I386;
-    stack.AddrPC.Offset    = context->Eip;
-    stack.AddrFrame.Offset = context->Ebp;
-    stack.AddrStack.Offset = context->Esp;
-#elif _M_X64
-    DWORD machineType      = IMAGE_FILE_MACHINE_AMD64;
-    stack.AddrPC.Offset    = context->Rip;
-    stack.AddrFrame.Offset = context->Rsp;
-    stack.AddrStack.Offset = context->Rsp;
-#else
-#error "Unsupported architecture"
-#endif
-
-    stack.AddrPC.Mode    = AddrModeFlat;
-    stack.AddrFrame.Mode = AddrModeFlat;
-    stack.AddrStack.Mode = AddrModeFlat;
-
-    HANDLE process = GetCurrentProcess();
-    HANDLE thread  = GetCurrentThread();
-
-    SymInitialize(process, NULL, TRUE);
-
-    for (int i = 0; i < 25; ++i)
-    {
-        if (!StackWalk64(machineType, process, thread, &stack, context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL))
-        {
-            break;
-        }
-
-        if (stack.AddrPC.Offset == 0)
-        {
-            break;
-        }
-
-        DWORD64 addr = stack.AddrPC.Offset;
-        char buffer[sizeof(SYMBOL_INFO) + 256];
-        SYMBOL_INFO * symbol = (SYMBOL_INFO *) buffer;
-        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-        symbol->MaxNameLen   = 255;
-
-        if (SymFromAddr(process, addr, 0, symbol))
-        {
-            std::cout << "  " << symbol->Name << " at 0x" << std::hex << addr << std::dec << "\n";
-        }
-        else
-        {
-            std::cout << "  Unknown function at 0x" << std::hex << addr << std::dec << "\n";
-        }
-    }
-
-    SymCleanup(process);
-    return EXCEPTION_EXECUTE_HANDLER;
-}
-
-#else
-void segfault_handler(int signum)
-{
-    std::cerr << "Caught segmentation fault (signal " << signum << ").\n";
-
-    const int max_frames = 64;
-    void * addrlist[max_frames];
-
-    // Retrieve current stack addresses
-    int addrlen = backtrace(addrlist, max_frames);
-
-    if (addrlen == 0)
-    {
-        std::cerr << "  <empty stack>\n";
-        std::exit(EXIT_FAILURE);
-    }
-
-    // Print out the backtrace to stderr
-    std::cerr << "Stack trace:\n";
-    char ** symbollist = backtrace_symbols(addrlist, addrlen);
-    for (int i = 0; i < addrlen; i++)
-    {
-        std::cerr << symbollist[i] << "\n";
-    }
-
-    free(symbollist);
-    std::exit(EXIT_FAILURE);
-}
-#endif
-
-int main(int argc, char ** argv)
-{
-
-    {
-
-#ifdef _WIN32
-        home_path = std::getenv("USERPROFILE");
-        if (home_path.empty())
-            home_path = std::getenv("APPDATA"); // Fallback to APPDATA
-#else
-        home_path = std::getenv("HOME") ? std::filesystem::path(std::getenv("HOME")) : std::filesystem::path();
-#endif
-    }
-
-    if (home_path.empty())
-    {
-        AVLLM_LOG_ERROR("%s: \n", "could not find the homepath");
-        exit(1);
-    }
-
-    app_path = home_path / ".av_llm";
-    AVLLM_LOG_DEBUG("home-path: %s -- app-path: %s \n", home_path.generic_string().c_str(), app_path.generic_string().c_str());
-
-    for (int i = 0; i < argc; i++)
-        AVLLM_LOG_DEBUG("[%03d]:%s\n", i, argv[i]);
-
-    if (argc == 1)
-    {
-        AVLLM_LOG_ERROR("%s\n", "error systax. Please refer to manual");
-        exit(0);
-    }
-
-#ifdef _WIN32
-    SetUnhandledExceptionFilter(ExceptionHandler);
-#else
-    std::signal(SIGSEGV, segfault_handler);
-#endif
-
-    pre_config_model_init();
-
-    auto chat_serve_caller = [](std::string model_description,
-                                std::function<int(std::string)> chat_or_serve_func) -> int { // handle the syntax
-        {
-            // handle if the argv[1] is *.guff
-            AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_description.c_str());
-            std::filesystem::path model_filename = model_description;
-            if (model_filename.extension() == ".gguf")
-            {
-                AVLLM_LOG_DEBUG("%s:%d - %s:%s \n", __func__, __LINE__, app_path.generic_string().c_str(), model_filename.c_str());
-
-                std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
-                    : std::filesystem::is_regular_file(app_path / model_filename)
-                    ? std::optional<std::filesystem::path>(app_path / model_filename)
-                    : std::nullopt;
-
-                if (model_path.has_value())
-                {
-                    AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_path.value().generic_string().c_str());
-                    chat_or_serve_func(model_path.value().generic_string());
-                }
-                AVLLM_LOG_DEBUG("%s:%d \n", __func__, __LINE__);
-
-                return 0;
-            }
-        }
-
-        {
-            // handle precofig model
-            if (pre_config_model.find(model_description) != pre_config_model.end())
-            {
-                std::string url = pre_config_model[model_description];
-
-                AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
-
-                auto last_slash = url.find_last_of("/");
-                if (last_slash != std::string::npos)
-                {
-                    std::filesystem::path model_filename = url.substr(last_slash + 1);
-
-                    AVLLM_LOG_DEBUG("%s:%d model path: %s\n", __func__, __LINE__, model_filename.c_str());
-
-                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(app_path / model_filename)
-                        ? std::optional<std::filesystem::path>(app_path / model_filename)
-                        : std::nullopt;
-
-                    if (not model_path.has_value())
-                    {
-                        AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
-                                        model_filename.generic_string().c_str(), url.c_str());
-                        model_pull(url);
-                    }
-                    else
-                        AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__,
-                                        model_path.value().generic_string().c_str());
-
-                    chat_or_serve_func((app_path / model_filename).generic_string());
-                }
-                return 0;
-            }
-        }
-        { // todo: handle the descrition (http://)
-        }
-
-        return 0;
-    };
-
-    CLI::App app{ "av_llm - CLI program" };
-    bool version_flag = false;
-    app.add_flag("-v,--version", version_flag, "show version");
-
-    // context
-    app.add_option("--ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
-    app.add_option("--batch", xoptions_.n_batch, "Number of batch")->default_val(std::to_string(xoptions_.n_batch));
-
-    //
-    app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
-
-    // sampling options
-    app.add_option("--repeat-penalty", xoptions_.repeat_penalty, "Reapeat penanty")
-        ->default_val(std::to_string(xoptions_.repeat_penalty));
-
-    // ---- MODEL command ----
-    auto model = app.add_subcommand("model", "Model operations");
-
-    // model ls subcommand
-    auto model_ls = model->add_subcommand("ls", "List all models");
-
-    // model pull subcommand
-    std::string model_pull_url;
-    auto model_pull = model->add_subcommand("pull", "Pull a model (url: string)");
-    model_pull->add_option("url", model_pull_url, "Model URL")->required();
-
-    // model del subcommand
-    std::string model_del_name;
-    auto model_del = model->add_subcommand("del", "Delete a model (model: string)");
-    model_del->add_option("model-path", model_del_name, "Model name")->required();
-
-    // ---- CHAT command ----
-    std::string chat_model_path;
-    auto chat = app.add_subcommand("chat", "Start an interactive chat");
-    chat->add_option("model-path", chat_model_path, "Model path")->required();
-
-    // ---- SERVE command ----
-    std::string serve_model_path;
-    auto serve = app.add_subcommand("serve", "Serve model");
-    serve->add_option("-p,--port", xoptions_.port, "Serve port");
-    serve->add_option("model-path", serve_model_path, "Model path")->required();
-
-    CLI11_PARSE(app, argc, argv);
-
-    if (version_flag)
-    {
-        std::cout << "av_llm version 0.1.0" << std::endl;
-        return 0;
-    }
-
-    // ---- MODEL logic ----
-    if (*model)
-    {
-        if (*model_ls)
-        {
-            model_cmd_handler("ls");
-        }
-        else if (*model_pull)
-        {
-            model_cmd_handler("pull " + model_pull_url);
-        }
-        else if (*model_del)
-        {
-            model_cmd_handler("del " + model_del_name);
-        }
-        else
-        {
-            std::cerr << "Specify a model subcommand: ls, pull <url>, or del <model>\n";
-            model->help();
-        }
-        return 0;
-    }
-
-    // ---- CHAT logic ----
-    if (*chat)
-    {
-        // chat_cmd_handler(chat_model_path);
-        chat_serve_caller(chat_model_path, chat_cmd_handler);
-        return 0;
-    }
-    // ---- SERVE logic ----
-    if (*serve)
-    {
-        // server_cmd_handler(serve_model_path);
-        chat_serve_caller(serve_model_path, server_cmd_handler);
-        return 0;
-    }
-
-    // TODO: the fallback does not work as the parser handler has processed when the command is not correct
-    // If no subcommand, fallback to legacy behavior: treat argv[1] as model description (chat or serve)
-#if 0
-    if (argc > 1)
-    {
-        chat_serve_caller(argv[1], chat_cmd_handler);
-    }
-#endif
-
-    std::cout << app.help() << std::endl;
-}

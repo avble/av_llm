@@ -1,7 +1,7 @@
 #ifndef _AVLLM_UTILS_H_
 #define _AVLLM_UTILS_H_
 
-#include "_deps/llama_cpp-src/src/llama-vocab.h"
+// #include "_deps/llama_cpp-src/src/llama-vocab.h"
 #include "common.h"
 #include "llama.h"
 #include "log.h"
@@ -16,6 +16,9 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <curl/curl.h>
+#include <filesystem>
+#include <fstream>
 
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
@@ -23,7 +26,6 @@ using json = nlohmann::ordered_json;
 // llama's helper function
 
 // sampling
-
 static void llama_sampler_print(const llama_sampler * smpl)
 {
     int n_samplers = llama_sampler_chain_n(smpl);
@@ -49,6 +51,93 @@ static void llama_token_print(const llama_vocab * vocab, llama_tokens & tokens)
         std::cout << s;
     }
     std::cout << std::endl;
+}
+
+// libcurl helper
+extern std::filesystem::path app_data_path;
+
+// curl helper function
+static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
+{
+    std::ofstream * of = static_cast<std::ofstream *>(stream);
+    try
+    {
+        of->write((const char *) ptr, size * nmemb);
+        return size * nmemb;
+    } catch (const std::exception & ex)
+    {
+        return 0;
+    }
+}
+
+// Progress callback (older interface)
+int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, curl_off_t /*ultotal*/, curl_off_t /*ulnow*/)
+{
+    if (dltotal == 0)
+        return 0; // avoid division by zero
+
+    double progress = (double) dlnow / (double) dltotal * 100.0;
+    // std::cout << "\rDownload progress: " << progress << "% (" << dlnow << "/" << dltotal << " bytes)" << std::flush;
+    std::cout << "\033[2K\r[";
+    for (int i = 0; i < 100; i++)
+        std::cout << ((i < (int) progress) ? "#" : ".");
+    std::cout << "] " << (int) progress << "%" << std::flush;
+
+    return 0; // return non-zero to abort transfer
+}
+
+bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out_file){
+    AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
+    CURL * curl;
+    CURLcode res;
+    bool ret = true;
+
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    curl = curl_easy_init();
+    if (curl)
+    {
+        auto file_path = app_data_path / out_file;
+        // open a file
+        std::ofstream of(file_path.c_str());
+
+        if (of.is_open())
+        {
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+
+            curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) &of);
+            // curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
+
+            curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+
+            // Set progress callback
+            curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+            curl_easy_setopt(curl, CURLOPT_XFERINFODATA, nullptr);
+
+            // follow redirect
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+            res = curl_easy_perform(curl);
+            if (res != CURLE_OK){
+                AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+                ret = false;
+            }
+
+            of.close();
+        }
+
+        AVLLM_LOG_DEBUG("%s: %d \n", "[DEBUG]", __LINE__);
+        curl_easy_cleanup(curl);
+    }
+    else
+    {
+        AVLLM_LOG_ERROR("%s: %d coud not download model: %s \n", "[DEBUG]", __LINE__, url.c_str());
+    }
+    curl_global_cleanup();
+
+    return ret;
 }
 
 struct human_readable
