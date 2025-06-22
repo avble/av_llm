@@ -53,14 +53,24 @@ struct xoptions
 {
     xoptions()
     {
-        port  = 8080;
-        n_ctx = 2048;
-        ngl   = 0;
+        repeat_penalty = 1.0;
+
+        n_ctx   = 512;
+        n_batch = 1024;
+
+        port = 8080;
+        ngl  = 0;
     }
+
+    // sampling
+    double repeat_penalty;
+
+    // decoding
+    int n_ctx;
+    int n_batch;
 
     // server
     int port;
-    int n_ctx;
     int ngl;
 };
 
@@ -388,11 +398,7 @@ auto chat_cmd_handler = [](std::string model_line) -> int {
 
         llama_token new_token;
         const llama_vocab * vocab = llama_model_get_vocab(model);
-        if (vocab == nullptr)
-        {
-            AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
-            exit(-1);
-        }
+        // const llama_vocab * vocab = llama_model_get_vocab(model);
 
         bool is_first       = llama_kv_self_used_cells(ctx) == 0;
         int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);
@@ -505,13 +511,19 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
         return 1;
     }
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+    if (vocab == nullptr)
+    {
+        AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
+        exit(-1);
+    }
 
     // // context initialize
     llama_context_params ctx_params = llama_context_default_params();
     auto me_llama_context_init      = [&model, &ctx_params]() -> llama_context * {
         ctx_params.no_perf = false;
-        // ctx_params.n_ctx   = xoptions_.n_ctx; // TODO what is it??. Better another number
-        // ctx_params.n_batch = xoptions_.n_ctx; // TODO what is it??. Better another number
+        ctx_params.n_ctx   = xoptions_.n_ctx;
+        ctx_params.n_batch = xoptions_.n_batch;
 
         return llama_init_from_model(model, ctx_params);
     };
@@ -531,13 +543,14 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             __func__);
         chat_templates = common_chat_templates_init(model, "chatml");
     }
+    if (false)
     {
         AVLLM_LOG_INFO("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
         AVLLM_LOG_INFO("%s: chat example: %s \n", __func__, common_chat_format_example(chat_templates.get(), false).c_str());
     }
 
     // initialize the sampler
-    llama_sampler * smpl = []() {
+    llama_sampler * smpl = [&vocab]() {
         auto sparams    = llama_sampler_chain_default_params();
         sparams.no_perf = false;
         auto smpl       = llama_sampler_chain_init(sparams);
@@ -549,8 +562,10 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
         return -1;
     }
-    { //
-        llama_sampler_print(smpl);
+    {
+        printf("[DEBUG] llama samplers start. \n");
+        // llama_sampler_print(smpl);
+        printf("[DEBUG] llama samplers end.\n");
     }
 
     struct chat_session_t
@@ -582,13 +597,6 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             ctx = nullptr;
         }
     };
-
-    const llama_vocab * vocab = llama_model_get_vocab(model);
-    if (vocab == nullptr)
-    {
-        AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
-        return -1;
-    }
 
     auto chat_template_to_tokens = [&chat_templates, &model, &smpl,
                                     &vocab](chat_session_t & chat,
@@ -632,8 +640,8 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
         return prompt_tokens;
     };
 
-    auto chat_sesion_get = [&smpl, &vocab](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
-                                           std::function<int(int, std::string)> func_) -> int {
+    auto chat_session_get_n = [&vocab](llama_sampler * smpl, chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
+                                       std::function<int(int, std::string)> func_) -> int {
         llama_token new_token;
 
         llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
@@ -679,7 +687,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
 
             if (func_(0, out) < 0)
             {
-                AVLLM_LOG_WARN("%s, failed to convert a token \n", __func__);
+                AVLLM_LOG_WARN("%s, terminated by caller \n", __func__);
                 break;
             }
 
@@ -688,6 +696,11 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
 
         AVLLM_LOG_INFO("%s", "\n");
         return 0;
+    };
+
+    auto chat_session_get = [&smpl, &vocab, &chat_session_get_n](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
+                                                                 std::function<int(int, std::string)> func_) -> int {
+        return chat_session_get_n(smpl, chat, prompt_tokens, func_);
     };
 
     static auto completions_chat_handler = [&](http::response res) -> void {
@@ -786,7 +799,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                 else
                 {
 
-                    chat_sesion_get(chat_session, tokens, get_text_hdl);
+                    chat_session_get(chat_session, tokens, get_text_hdl);
 
                     res.set_content(res_body);
                     res.end();
@@ -816,7 +829,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                 }
                 else
                 {
-                    chat_sesion_get(chat_session, tokens, get_text_hdl);
+                    chat_session_get(chat_session, tokens, get_text_hdl);
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     res.chunk_end();
@@ -922,21 +935,13 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
 
     // Non-OpenAI API
     {
-        // auto tokenized_prompts = tokenize_input_prompts(ctx_server.vocab, prompt, true, true);
-        // for (const auto & tokens : tokenized_prompts) {
-        //     // this check is necessary for models that do not add BOS token to the input
-        //     if (tokens.empty()) {
-        //         res_error(res, format_error_response("Input content cannot be empty", ERROR_TYPE_INVALID_REQUEST));
-        //         return;
-        //     }
-        // }
-        // auto res_error
-        //
 
-        static auto fim_handler = [&me_llama_context_init, &chat_sesion_get, &vocab, &ctx_params](http::response res) -> void {
+        static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &vocab, &ctx_params](http::response res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
-
-            AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
+						bool silent = true;
+//						bool silent = false;
+						if (!silent)
+	            AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
 
             // check model compatibility
             std::string is_err = [&vocab]() -> std::string {
@@ -966,29 +971,35 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
             }
 
             // printf("[DEBUG]: %s:%d \n", __func__, __LINE__);
-            json data;
-            [&data](const std::string & body) mutable {
+            json body_js;
+            [&body_js](const std::string & body) mutable {
                 try
                 {
-                    data = json::parse(body);
+                    body_js = json::parse(body);
                 } catch (const std::exception & ex)
                 {
-                    data = {};
+                    body_js = {};
                 }
             }(res.reqwest().body());
-            // printf("[DEBUG]: %s:%d \n", __func__, __LINE__);
 
-            is_err = [&data]() -> std::string {
-                if (data.contains("prompt") && !data.at("prompt").is_string())
+            if (body_js == json())
+            { // not valid body_js
+                res.result() = http::status_code::internal_error;
+                res.end();
+                return;
+            }
+
+            is_err = [&body_js]() -> std::string {
+                if (body_js.contains("prompt") && !body_js.at("prompt").is_string())
                     return "Do not accept the prompt (not string)";
 
-                if (!data.contains("input_prefix"))
+                if (!body_js.contains("input_prefix"))
                     return R"("input_prefix" is required)";
 
-                if (!data.contains("input_suffix"))
+                if (!body_js.contains("input_suffix"))
                     return R"("input_suffix" is required)";
 
-                // if (data.contains("input_extra") && !data.at("input_extra").is_array())
+                // if (body_js.contains("input_extra") && !body_js.at("input_extra").is_array())
                 //    return "\"input_extra\" must be an array of {\"filename\": string, \"text\": string}";
 
                 return "";
@@ -1003,7 +1014,7 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                 return;
             }
 
-            json input_extra = json_value(data, "input_extra", json::array());
+            json input_extra = json_value(body_js, "input_extra", json::array());
 
             [&input_extra]() -> std::string {
                 for (const auto & chunk : input_extra)
@@ -1016,34 +1027,32 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
                     if (chunk.contains("filename") && !chunk.at("filename").is_string())
                         return "extra_context chunk's \"filename\" field must be a string";
                 }
-
                 return "";
             }();
 
-            data["input_extra"] = input_extra; // default to empty array if it's not exist
+            body_js["input_extra"] = input_extra; // default to empty array if it's not exist
 
-            std::string prompt                          = json_value(data, "prompt", std::string());
+            std::string prompt                          = json_value(body_js, "prompt", std::string());
             std::vector<llama_tokens> tokenized_prompts = tokenize_input_prompts(vocab, prompt, false, true);
-            AVLLM_LOG_INFO("creating infill tasks, n_prompts = %d\n", (int) tokenized_prompts.size());
-            // hacking
-            std::string input_suffix = data.at("input_suffix").get<std::string>();
+
+            std::string input_suffix = body_js.at("input_suffix").get<std::string>();
+            std::string input_prefix = body_js.at("input_prefix").get<std::string>();
+
+            if (input_prefix.empty())
             {
-                // clean up the \n at the begging
-                auto pos = input_suffix.begin();
-                while (pos < input_suffix.end() and *pos == '\n')
-                    pos++;
-                input_suffix = std::string(pos, input_suffix.end());
+                res.end();
+                AVLLM_LOG_WARN("%s \n", "input_prefix is empty");
+                return;
             }
 
-            std::string input_prefix = data.at("input_prefix").get<std::string>();
+						if (!silent)
+             AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
 
-            AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
+            int n_predict = json_value(body_js, "n_predict", 128);
 
-            auto tokens = format_infill(vocab, input_prefix, input_suffix, data.at("input_extra"), ctx_params.n_batch,
-                                        ctx_params.n_batch, // TODO: dangerous
-                                        ctx_params.n_batch, // TODO: dangerous
-                                        false, tokenized_prompts[0]);
-            {
+            auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), ctx_params.n_batch, n_predict,
+                                        ctx_params.n_ctx, false, tokenized_prompts[0]);
+            if(!silent){
                 llama_token_print(vocab, tokens);
             }
 
@@ -1068,28 +1077,54 @@ auto server_cmd_handler = [](std::string run_line) { // run serve
 
             chat_session_t & chat_session = std::any_cast<chat_session_t &>(res.get_data());
 
+            if (tokens.size() == 0)
+            {
+                res.result() = http::status_code::internal_error;
+                res.end();
+                return;
+            }
+
             std::string res_body;
+            int decoded       = 0;
             auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                std::cout << text;
+                // std::cout << text;
+                if (decoded++ > n_predict)
+                    return -1;
                 if (rc == 0)
                     res_body = res_body + text;
 
                 return 0;
             };
 
-            if (tokens.size() == 0)
+            // sampler
+            // initialize the sampler
+            llama_sampler * smpl_ = [&vocab]() {
+                auto sparams    = llama_sampler_chain_default_params();
+                sparams.no_perf = false;
+                auto smpl       = llama_sampler_chain_init(sparams);
+                llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+                llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.89, 20));
+                llama_sampler_chain_add(smpl, llama_sampler_init_dist(4294967295));
+                return smpl;
+            }();
+            if (smpl_ == nullptr)
             {
-                res.result() = http::status_code::internal_error;
+                AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
+                res.result() = http::status_code::bad_request;
                 res.end();
+                return;
             }
-            else
             {
-                chat_sesion_get(chat_session, tokens, get_text_hdl);
+                llama_sampler_print(smpl_);
+            }
+
+            {
+                chat_session_get_n(smpl_, chat_session, tokens, get_text_hdl);
                 json body_js;
                 body_js["content"] = res_body;
-                // res.set_content(res_body);
                 res.set_content(body_js.dump());
                 res.end();
+                return;
             }
         };
 
@@ -1246,9 +1281,6 @@ int main(int argc, char ** argv)
 
     auto chat_serve_caller = [](std::string model_description,
                                 std::function<int(std::string)> chat_or_serve_func) -> int { // handle the syntax
-        // $./av_llm <model-description>
-        // which is alias to $./av_llm chat
-
         {
             // handle if the argv[1] is *.guff
             AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_description.c_str());
@@ -1316,8 +1348,17 @@ int main(int argc, char ** argv)
     CLI::App app{ "av_llm - CLI program" };
     bool version_flag = false;
     app.add_flag("-v,--version", version_flag, "show version");
-    app.add_option("-c,--n_ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
+
+    // context
+    app.add_option("--ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
+    app.add_option("--batch", xoptions_.n_batch, "Number of batch")->default_val(std::to_string(xoptions_.n_batch));
+
+    //
     app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
+
+    // sampling options
+    app.add_option("--repeat-penalty", xoptions_.repeat_penalty, "Reapeat penanty")
+        ->default_val(std::to_string(xoptions_.repeat_penalty));
 
     // ---- MODEL command ----
     auto model = app.add_subcommand("model", "Model operations");
@@ -1384,7 +1425,6 @@ int main(int argc, char ** argv)
         chat_serve_caller(chat_model_path, chat_cmd_handler);
         return 0;
     }
-
     // ---- SERVE logic ----
     if (*serve)
     {
@@ -1395,10 +1435,12 @@ int main(int argc, char ** argv)
 
     // TODO: the fallback does not work as the parser handler has processed when the command is not correct
     // If no subcommand, fallback to legacy behavior: treat argv[1] as model description (chat or serve)
+#if 0
     if (argc > 1)
     {
         chat_serve_caller(argv[1], chat_cmd_handler);
     }
+#endif
 
     std::cout << app.help() << std::endl;
 }

@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
 option(AV_LLM_USE_SYSTEM_CURL "av_llm: using system lib cur" OFF)
 

@@ -241,47 +241,6 @@ static T json_value(const json & body, const std::string & key, const T & defaul
     }
 }
 
-/**
- * this handles 2 cases:
- * - only string, example: "string"
- * - mixed string and tokens, example: [12, 34, "string", 56, 78]
- */
-// static llama_tokens tokenize_mixed(const llama_vocab * vocab, const json & json_prompt, bool add_special, bool parse_special) {
-//     // If `add_bos` is true, we only add BOS, when json_prompt is a string,
-//     // or the first element of the json_prompt array is a string.
-//     llama_tokens prompt_tokens;
-
-//     if (json_prompt.is_array()) {
-//         bool first = true;
-//         for (const auto & p : json_prompt) {
-//             if (p.is_string()) {
-//                 auto s = p.template get<std::string>();
-
-//                 llama_tokens p;
-//                 if (first) {
-//                     p = common_tokenize(vocab, s, add_special, parse_special);
-//                     first = false;
-//                 } else {
-//                     p = common_tokenize(vocab, s, false, parse_special);
-//                 }
-
-//                 prompt_tokens.insert(prompt_tokens.end(), p.begin(), p.end());
-//             } else {
-//                 if (first) {
-//                     first = false;
-//                 }
-
-//                 prompt_tokens.push_back(p.template get<llama_token>());
-//             }
-//         }
-//     } else {
-//         auto s = json_prompt.template get<std::string>();
-//         prompt_tokens = common_tokenize(vocab, s, add_special, parse_special);
-//     }
-
-//     return prompt_tokens;
-// }
-
 // borrow this from llama.cpp prorject
 static llama_tokens format_infill(const llama_vocab * vocab, const json & input_prefix, const json & input_suffix,
                                   const json & input_extra, const int n_batch, const int n_predict, const int n_ctx,
@@ -307,6 +266,8 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
     auto tokens_prefix = tokenize_mixed(vocab, input_prefix, false, false);
     auto tokens_suffix = tokenize_mixed(vocab, input_suffix, false, false);
 
+#if 0
+    // not support the repository level
     if (llama_vocab_fim_rep(vocab) != LLAMA_TOKEN_NULL)
     {
         // TODO: make project name an input
@@ -315,6 +276,10 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
         extra_tokens.push_back(llama_vocab_fim_rep(vocab));
         extra_tokens.insert(extra_tokens.end(), k_fim_repo.begin(), k_fim_repo.end());
     }
+
+#endif
+#if 0
+		// not support chunk
     for (const auto & chunk : input_extra)
     {
         // { "text": string, "filename": string }
@@ -341,7 +306,9 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
         const auto chunk_tokens = common_tokenize(vocab, text, false, false);
         extra_tokens.insert(extra_tokens.end(), chunk_tokens.begin(), chunk_tokens.end());
     }
+#endif
 
+#if 0
     if (llama_vocab_fim_sep(vocab) != LLAMA_TOKEN_NULL)
     {
         // TODO: current filename
@@ -350,6 +317,7 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
         extra_tokens.insert(extra_tokens.end(), llama_vocab_fim_sep(vocab));
         extra_tokens.insert(extra_tokens.end(), k_fim_file.begin(), k_fim_file.end());
     }
+#endif
 
     // for now pick FIM context to fit in a batch (ratio prefix:suffix = 3:1, TODO: configurable?)
     const int n_prefix_take = std::min<int>(tokens_prefix.size(), 3 * (n_batch / 4));
@@ -377,9 +345,10 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
     }
 
     AVLLM_LOG_DEBUG("extra: n_ctx = %d, n_extra_take = %d, n_extra = %d\n", n_ctx, n_extra_take, (int) extra_tokens.size());
-
+#if 0
     // put the extra context before the FIM prefix
     embd_inp.insert(embd_inp.begin(), extra_tokens.end() - n_extra_take, extra_tokens.end());
+#endif
 
     embd_inp.insert(embd_inp.end(), embd_end.begin(), embd_end.end());
     embd_inp.push_back(llama_vocab_fim_mid(vocab));

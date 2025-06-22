@@ -2,7 +2,9 @@
 
 - Gen AI stuff
 
-# Compilation 
+<details>
+<summary> Pre-built </summary>
+# Pre-built 
 
  | OS      | Download link |
  |---------|---------------|
@@ -21,6 +23,24 @@ Support various GPU's library/platform.
  | Linux   |      |        |      |
  | macOS   | x    | x      | x    |
 
+</details>
+
+# Fetures
+## FIM (Finish-In-Middle)
+- [x] File-level 
+- [] Rep-level 
+
+* [paper-1](https://arxiv.org/pdf/2409.12186)
+
+## OpenAI
+* Chat completion
+- [x] Default
+- [x] stream
+- [] Image input
+- [] function
+
+
+# Integrations
 
 # Compilation
 
@@ -77,19 +97,6 @@ Qwen2.5-Coder-1.5B-Q8_0-GGUF
 | (Qwen3-4B)[https://huggingface.co/Qwen/Qwen3-4B-GGUF]                                             | ~3 Gb | coding, think | Q4, K_M |
 | (Qwen2.5-Coder-3B-Q8_0-GGUF)[https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF] |       | coding, FIM   |         |
 |                                                                                                   |       |               |         |
-
-# Supported model
-
-This application is built on the top of [llama.cpp](https://github.com/ggerganov/llama.cpp), so it should work any model which the [llama.cpp](https://github.com/ggerganov/llama.cpp) supports
-
-- LLaMA 1
-- LLaMA 2
-- LLaMA 3
-- [Mistral-7B](https://huggingface.co/mistralai/Mistral-7B-v0.1)
-- [Mixtral MoE](https://huggingface.co/models?search=mistral-ai/Mixtral)
-- [DBRX](https://huggingface.co/databricks/dbrx-instruct)
-- [Falcon](https://huggingface.co/models?search=tiiuae/falcon)
-- [Chinese-LLaMA-Alpaca](https://github.com/ymcui/Chinese-LLaMA-Alpaca)
 
 # Known limitation
 

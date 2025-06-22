@@ -161,12 +161,17 @@ TEST_CASE("test_fim_model")
         REQUIRE(false);
     }
 
-    INFO("step: sampling");
+    const llama_vocab * vocab = llama_model_get_vocab(model);
 
-    llama_sampler * smpl = []() {
+    INFO("step: sampling");
+    llama_sampler * smpl = [&vocab]() {
         auto smpl_params     = llama_sampler_chain_default_params();
         llama_sampler * smpl = llama_sampler_chain_init(smpl_params);
-        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.89, 20));
+        llama_sampler_chain_add(smpl, llama_sampler_init_dist(4294967295));
+        // llama_sampler_chain_add(smpl, llama_sampler_init_infill(vocab));
+        // llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
         return smpl;
     }();
     if (nullptr == smpl)
@@ -187,11 +192,10 @@ TEST_CASE("test_fim_model")
         }();
         printf("\n");
     }
-
     {
 
         INFO("step: decoding prompt");
-#define TC 1
+#define TC 2
 #if TC == 1
         std::string prompt = R"(<|fim_prefix|>def quicksort(arr):
     if len(arr) <= 1:
@@ -202,7 +206,18 @@ TEST_CASE("test_fim_model")
     right = [x for x in arr if x > pivot]
     return quicksort(left) + middle + quicksort(right)<|fim_middle|>)";
 #endif
-        const llama_vocab * vocab = llama_model_get_vocab(model);
+#if TC == 2
+        // test repeation
+        std::string prompt = R"(<|fim_prefix|>#include <iostream>
+int main(int argc, char * argv[])
+{
+    printf("hello world \n");<|fim_suffix|>
+
+    return 0;
+}<|fim_middle|>)";
+
+#endif
+        // printf("[DEBUG] %s: %d \n", __func__, __LINE__);
         const int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
         if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
@@ -228,6 +243,7 @@ TEST_CASE("test_fim_model")
             std::cout << "\n";
         }
 
+        // printf("[DEBUG] %s: %d \n", __func__, __LINE__);
         llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
         if (llama_decode(model_ctx, batch))
         {
@@ -235,12 +251,15 @@ TEST_CASE("test_fim_model")
             REQUIRE(false);
         }
 
+        printf("[DEBUG] %s: %d \n", __func__, __LINE__);
+
         INFO("step: do inference");
         std::cout << "Inference: \n" << std::endl;
         int num_decoded_token = 0;
         llama_token new_token_id;
         while (num_decoded_token < 1000)
         {
+            // new_token_id = llama_sampler_sample(smpl, model_ctx, -1);
             new_token_id = llama_sampler_sample(smpl, model_ctx, -1);
 
             if (llama_vocab_is_eog(vocab, new_token_id))
