@@ -77,9 +77,10 @@ jobs:
         run: |
           (Get-Content build_vulkan.bat) -replace 'call\s+"?E:\\software_vs\\VC\\Auxiliary\\Build\\vcvars64\.bat"?', '' | Set-Content build_vulkan_ci.bat
 
-      - name: Build with Vulkan
+      - name: Build with Vulkan 
         shell: cmd
         run: |
+          set Vulkan_SDK=C:\VulkanSDK\1.3.280.0
           build_vulkan_ci.bat
   
   windows-sycl:
