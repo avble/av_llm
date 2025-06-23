@@ -71,16 +71,19 @@
 			}
 		},
 
+		
+
+
 		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "debug" ] },
 		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "reldbg" ] },
 
-		{ "name": "x64-windows-msvc-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
-		{ "name": "x64-windows-msvc-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
+		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
 
 		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama", "debug"] },
 		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama", "release"] },
 
-		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "debug" ] },
-		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "release" ] }
+		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "llama", "debug" ] },
+		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "llama", "release" ] }
 	]
 }

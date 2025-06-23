@@ -1,3 +1,2 @@
-# REM build CPU-backend 
-cmake -B build-cpu && cmake --build build-cpu --config=Release
-
+cmake --preset x64-windows-release
+cmake --build build-x64-windows-release
