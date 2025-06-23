@@ -90,6 +90,7 @@ jobs:
           cd C:\vcpkg
           .\bootstrap-vcpkg.bat
           .\vcpkg.exe install curl:x64-windows
+          choco install ninja -y
 
       - name: Remove local-only vcvars64.bat calls
         shell: pwsh
@@ -132,6 +133,7 @@ jobs:
           cd C:\vcpkg
           .\bootstrap-vcpkg.bat
           .\vcpkg.exe install curl:x64-windows
+          choco install ninja -y
 
       - name: Build
         id: cmake_build
