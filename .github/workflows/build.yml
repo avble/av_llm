@@ -1,7 +1,6 @@
 name: Build and Test
 
-on: 
-  workflow_dispatch
+on: workflow_dispatch
 
 jobs:
   macOS-arm64:
@@ -13,6 +12,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: prepare build
+        id: prepare
+        run: brew install curl
 
       - name: Build
         id: cmake_build
@@ -30,6 +33,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: prepare build
+        id: prepare
+        run: brew install curl
+
       - name: Build
         id: cmake_build
         run: |
@@ -45,6 +52,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: prepare build
+        id: prepare
+        run: sudo apt-get install -y curl
 
       - name: Build
         id: cmake_build
@@ -72,17 +83,21 @@ jobs:
           $VulkanRoot = "$Env:VULKAN_SDK"
           echo "VULKAN_SDK=$VulkanRoot" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: prepare build
+        id: prepare
+        run: choco install curl -y
+
       - name: Remove local-only vcvars64.bat calls
         shell: pwsh
         run: |
           (Get-Content build_vulkan.bat) -replace 'call\s+"?E:\\software_vs\\VC\\Auxiliary\\Build\\vcvars64\.bat"?', '' | Set-Content build_vulkan_ci.bat
 
-      - name: Build with Vulkan 
+      - name: Build with Vulkan
         shell: cmd
         run: |
           set Vulkan_SDK=C:\VulkanSDK\1.3.280.0
           build_vulkan_ci.bat
-  
+
   windows-sycl:
     runs-on: windows-latest
 
@@ -103,8 +118,12 @@ jobs:
           fetch-depth: 0
 
       - name: Install
-        run:  |
+        run: |
           scripts/install-oneapi.bat $WINDOWS_BASEKIT_URL $WINDOWS_DPCPP_MKL
+
+      - name: prepare build
+        id: prepare
+        run: choco install curl -y
 
       - name: Build
         id: cmake_build
@@ -112,4 +131,3 @@ jobs:
         run: |
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" intel64 --force
           build_sycl.bat
-
