@@ -55,7 +55,7 @@ jobs:
 
       - name: prepare build
         id: prepare
-        run: sudo apt-get install -y curl
+        run: sudo apt-get install libcurl4-openssl-dev
 
       - name: Build
         id: cmake_build
@@ -83,9 +83,13 @@ jobs:
           $VulkanRoot = "$Env:VULKAN_SDK"
           echo "VULKAN_SDK=$VulkanRoot" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: prepare build
-        id: prepare
-        run: choco install curl -y
+      - name: Set up vcpkg and install libcurl
+        shell: powershell
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install curl:x64-windows
 
       - name: Remove local-only vcvars64.bat calls
         shell: pwsh
@@ -121,9 +125,13 @@ jobs:
         run: |
           scripts/install-oneapi.bat $WINDOWS_BASEKIT_URL $WINDOWS_DPCPP_MKL
 
-      - name: prepare build
-        id: prepare
-        run: choco install curl -y
+      - name: Set up vcpkg and install libcurl
+        shell: powershell
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install curl:x64-windows
 
       - name: Build
         id: cmake_build
