@@ -43,6 +43,10 @@ cmake -G "Ninja" -B build -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=icx -DCMAKE
 ## Reference
 https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit-download.html
 
+
+# vcpkg
+set CMAKE_TOOLCHAIN_FILE=C:/Users/harry/work/av_llm/vcpkg/scripts/buildsystems/vcpkg.cmake
+
 # CUDA
 
 # BLAS

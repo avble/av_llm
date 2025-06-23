@@ -14,6 +14,18 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(AV_LLM_BUILD_TEST "av_llm: build test " OFF)
 option(AV_LLM_USE_SYSTEM_CURL "av_llm: using system lib cur" OFF)
 
+if (AV_LLM_USE_SYSTEM_CURL STREQUAL "ON")
+	find_package(CURL REQUIRED)
+	message(STATUS "libcurl is found: ${CURL_VERSION_STRING}")
+	message(STATUS "curl header is : ${CURL_INCLUDE_DIRS}")
+	message(STATUS "curl library is : ${CURL_LIBRARIES}")
+	set(CURL_FOUND TRUE CACHE INTERNAL "")
+	set(CURL_INCLUDE_DIRS "${CURL_INCLUDE_DIRS}" CACHE PATH "libcurl include path")
+	#set(CURL_LIBRARIES CURL::libcurl CACHE INTERNAL "")
+else()
+	message("libcurl use internal build")
+endif()
+
 include("external.cmake")
 
 set(PUBLIC_WEBUI
@@ -47,10 +59,8 @@ if(MSVC)
     add_compile_options(/std:c++17)
 endif()
 
-if (AV_LLM_USE_SYSTEM_CURL STREQUAL "ON")
-	find_package(CURL REQUIRED)
-	message(STATUS "libcurl is found: ${CURL_VERSION_STRING}")
-endif()
+target_link_directories(${TARGET} PRIVATE ${llama.cpp_BINARY_DIR})
+target_link_libraries(${TARGET} PRIVATE llama-server-lib)
 
 target_link_libraries(${TARGET} PRIVATE common llama ${CMAKE_THREAD_LIBS_INIT} av_connect CURL::libcurl CLI11::CLI11 )
 target_include_directories(${TARGET} PRIVATE ${av_connect_SOURCE_DIR}/lib ${CMAKE_CURRENT_BINARY_DIR})
@@ -60,4 +70,4 @@ add_subdirectory(example)
 
 #if (AV_LLM_BUILD_TEST STREQUAL "ON")
     add_subdirectory(test)
-		#endif()
+#endif()

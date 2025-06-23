@@ -12,8 +12,10 @@ It can be used, modified.
 
 #include "av_connect.hpp"
 #include "helper.hpp"
-#include "index.html.gz.hpp"
 #include "model.hpp"
+namespace av_llm {
+#include "index.html.gz.hpp"
+}
 
 #include "utils.hpp"
 
@@ -54,9 +56,9 @@ struct xoptions
 
         n_ctx   = 512;
         n_batch = 1024;
+        ngl     = 0;
 
         port = 8080;
-        ngl  = 0;
     }
 
     // sampling
@@ -65,19 +67,27 @@ struct xoptions
     // decoding
     int n_ctx;
     int n_batch;
+    int ngl;
 
     // server
     int port;
-    int ngl;
 
     // others
     std::string model_url_or_alias;
+
+    // llama-server
+    std::string llama_srv_args;
 };
 
 // prototype
 static void model_cmd_handler(std::string sub_cmd);
 static void server_cmd_handler(std::filesystem::path model_path);
 static void chat_cmd_handler(std::filesystem::path model_path);
+static void llama_srv_cmd_handler(int argc, char * argv[]);
+
+// prototype
+static void model_cmd_handler(std::string sub_cmd);
+static void server_cmd_handler(std::filesystem::path model_path);
 
 // global variable
 static xoptions xoptions_;
@@ -212,8 +222,10 @@ int main(int argc, char ** argv)
     serve->add_option("-p,--port", xoptions_.port, "Serve port");
     serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path")->required();
 
+    // -- llama comand ----
+    auto llama = app.add_subcommand("llama", "LLAMA server command");
+    llama->allow_extras();
     CLI11_PARSE(app, argc, argv);
-
     if (version_flag)
     {
         std::cout << "av_llm version 0.1.0" << std::endl;
@@ -253,6 +265,13 @@ int main(int argc, char ** argv)
     if (*serve)
     {
         process_chat_or_serve(server_cmd_handler);
+        return 0;
+    }
+
+    // ---- LLAMA logic ----
+    if (*llama)
+    {
+        llama_server_main(argc - 1, &argv[1]);
         return 0;
     }
 
@@ -341,7 +360,7 @@ static void model_cmd_handler(std::string sub_cmd)
 
 static void chat_cmd_handler(std::filesystem::path model_path)
 {
-    bool silent = false;
+    bool silent = true;
     ggml_backend_load_all();
 
     // model initialized
@@ -449,7 +468,7 @@ static void chat_cmd_handler(std::filesystem::path model_path)
             return;
         }
 
-        if (false)
+        if (!silent)
         { // print token
             std::cout << "\ntokens: \n";
             int cnt = 0;
@@ -502,10 +521,8 @@ static void chat_cmd_handler(std::filesystem::path model_path)
                 return;
             }
 
-            // std::string out(buf, n);
-            // std::cout << std::hex << out << std::endl;
-            //  #printf("%x", out.c_str());
-            //  fflush(stdout);
+            std::string out(buf, n);
+            std::cout << out;
             batch = llama_batch_get_one(&new_token, 1);
         }
     }
@@ -783,13 +800,52 @@ void server_cmd_handler(std::filesystem::path model_path)
                 // COEP and COOP headers, required by pyodide (python interpreter)
                 res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
                 res.set_header("Cross-Origin-Opener-Policy", "same-origin");
-                res.set_content(reinterpret_cast<const char *>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
+                res.set_content(reinterpret_cast<const char *>(av_llm::index_html_gz), av_llm::index_html_gz_len,
+                                "text/html; charset=utf-8");
                 // res.set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
             }
             res.end();
         };
         route_.get("/", web_handler);
         route_.get("/index.html", web_handler);
+    }
+
+    { // models
+        static auto handle_models = [&](http::response res) {
+            AVLLM_LOG_TRACE_SCOPE("handle_models")
+            json models = { { "object", "list" },
+                            { "data",
+                              {
+                                  { { "id", "openchat_3.6" },
+                                    { "object", "model" },
+                                    { "created", std::time(0) },
+                                    { "owned_by", "avbl llm" },
+                                    { "meta", "meta" } },
+                              } } };
+
+            res.set_content(models.dump(), MIMETYPE_JSON);
+            res.end();
+        };
+
+        static auto handle_model = [&](http::response res) -> void {
+            AVLLM_LOG_TRACE_SCOPE("handle_model");
+            json models = {
+                { "n_ctx", xoptions_.n_ctx },
+                { "n_batch", xoptions_.n_batch },
+                { "ngl", xoptions_.ngl },
+                { "port", xoptions_.port },
+                { "model_url_or_path", xoptions_.model_url_or_alias },
+                { "sampler", {} },
+            };
+
+            // nlohmman json dump with pretty
+            res.set_content(models.dump(4), MIMETYPE_JSON);
+            res.end();
+        };
+
+        route_.get("/models", handle_models);
+        route_.get("/v1/models", handle_models);
+        route_.get("/model", handle_model);
     }
 
     // OpenAI API
@@ -935,25 +991,6 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
         };
 
-        static auto handle_models = [&](http::response res) {
-            AVLLM_LOG_TRACE_SCOPE("handle_models")
-            json models = { { "object", "list" },
-                            { "data",
-                              {
-                                  { { "id", "openchat_3.6" },
-                                    { "object", "model" },
-                                    { "created", std::time(0) },
-                                    { "owned_by", "avbl llm" },
-                                    { "meta", "meta" } },
-                              } } };
-
-            res.set_content(models.dump(), MIMETYPE_JSON);
-            res.end();
-        };
-
-        // model
-        route_.get("/models", handle_models);
-        route_.get("/v1/models", handle_models);
         // completion (it is only support stream, and non-stream)
         route_.post("/completions", [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
         route_.post("/v1/completions",
@@ -965,7 +1002,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
     }
 
-    // Non-OpenAI API
+    // infill, fim
     {
         static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &vocab, &ctx_params](http::response res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
@@ -1121,7 +1158,6 @@ void server_cmd_handler(std::filesystem::path model_path)
             std::string res_body;
             int decoded       = 0;
             auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                // std::cout << text;
                 if (decoded++ > n_predict)
                     return -1;
                 if (rc == 0)
@@ -1166,6 +1202,39 @@ void server_cmd_handler(std::filesystem::path model_path)
         route_.post("/fim", [](http::response res) { std::thread{ fim_handler, std::move(res) }.detach(); });
         route_.post("/infill", [](http::response res) { std::thread{ fim_handler, std::move(res) }.detach(); });
     }
+    {
+        // health handler
+        static auto health_handler = [](http::response res) {
+            res.set_header("Content-Type", "application/json");
+            json body;
+            body["status"]  = "OK";
+            body["name"]    = "av_llm";
+            body["version"] = "0.0.1-Preview";
+            body["uptime"]  = 0;
+            res.set_content(body.dump());
+            res.end();
+        };
+
+        //
+
+        route_.get("health", health_handler);
+    }
+
+    // registered route by post, get, ..
+    // get        /
+    // get        /index.html
+    //
+    // get				/models
+    // get 				/v1/models
+    //
+    // post 			/completions
+    // post 			/v1/completions
+    // post				/v1/chat/completions
+    //
+    // post 			/infill
+    // post 			/fim
+    //
+    // get 				/health
 
     AVLLM_LOG_INFO("Server is started at http://127.0.0.1:%d\n", xoptions_.port);
 
@@ -1173,3 +1242,9 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     llama_model_free(model);
 };
+
+// llama server command handler
+static void llama_srv_cmd_handler(int argc, char * argv[])
+{
+    llama_server_main(argc, argv);
+}

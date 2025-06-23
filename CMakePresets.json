@@ -43,8 +43,8 @@
 			"hidden": true,
 			"cacheVariables": {
 				"LLAMA_BUILD_COMMON": "ON",
-				"LLAMA_BUILD_TOOL": "ON",
-				"LLAMA_CURL": "OFF"
+				"LLAMA_BUILD_TOOLS": "ON",
+				"LLAMA_BUILD_SERVER": "ON"
 			}
 		},
 

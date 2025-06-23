@@ -12,13 +12,12 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdlib>
-#include <filesystem>
-#include <iostream>
-#include <string>
-#include <vector>
 #include <curl/curl.h>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
 
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
@@ -86,7 +85,8 @@ int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, 
     return 0; // return non-zero to abort transfer
 }
 
-bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out_file){
+bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out_file)
+{
     AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
     CURL * curl;
     CURLcode res;
@@ -120,7 +120,8 @@ bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 
             res = curl_easy_perform(curl);
-            if (res != CURLE_OK){
+            if (res != CURLE_OK)
+            {
                 AVLLM_LOG_ERROR("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
                 ret = false;
             }
@@ -445,5 +446,6 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
     return embd_inp;
 }
 // to here
+extern "C" int llama_server_main(int argc, char * argv[]);
 
 #endif
