@@ -71,11 +71,15 @@
 			}
 		},
 
-		
+		{ "name": "x64-Ubuntu-gcc-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-Ubuntu-gcc-release", "inherits": [ "base-ninja", "llama", "release" ] },
 
+		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "llama", "debug" ] },
+		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "llama", "reldbg" ] },
 
-		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "debug" ] },
-		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "reldbg" ] },
+		{ "name": "x64-apple-clang-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-apple-clang-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
+
 
 		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
 		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
