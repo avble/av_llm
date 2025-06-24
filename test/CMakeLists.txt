@@ -21,6 +21,5 @@ target_link_libraries(test_cli PRIVATE Catch2)
 add_executable(test_curl test_main.cpp test_curl.cpp)
 target_link_libraries(test_curl CURL::libcurl Catch2)
 
-# add_executable(test_curl test_curl.cp)
-
-# add_subdirectory(test_make_installer)
+add_executable(llama_option_table llama_print_option_tbl.cpp)
+target_link_libraries(llama_option_table common llama)

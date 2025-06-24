@@ -6,13 +6,22 @@
 #include "ggml-backend.h"
 #include "llama.h"
 
+#include <array>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
+#include <iterator>
+#include <map>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #ifdef _MSC_VER
 #include <ciso646>
 #endif
+
+using namespace std;
 
 TEST_CASE("llama_arg_parser")
 {
@@ -63,20 +72,14 @@ TEST_CASE("llama_arg_parser")
             }
         };
 
-        // interate over the enum LLAMA_EXAMPLE_COUNT
+        // prepare data
+        std::map<std::string, int> data; /* = { { "row-1", { "item 1", "item 2", "", "item 4" } },
+                                                                 { "row-2", { "item 1", "", "item 3", "item 4" } } }; */
 
         for (int ex = 0; ex < LLAMA_EXAMPLE_COUNT; ex++)
         {
 
-            // conver the below code using std::cout in stead of printf
-            /*
-    printf("\x1b[31m"
-    "%s"
-    "\x1b[0m\n",
-    llama_example_to_str(static_cast<llama_example>(ex)).c_str());
-            */
-
-            std::cout << "\x1b[31m" << llama_example_to_str(static_cast<llama_example>(ex)).c_str() << "\x1b[0m\n";
+            // std::cout << "\x1b[31m" << llama_example_to_str(static_cast<llama_example>(ex)).c_str() << "\x1b[0m\n";
             auto ctx_arg = common_params_parser_init(common_param, (enum llama_example) ex);
             {
                 // print all option of ctx arg
@@ -84,12 +87,86 @@ TEST_CASE("llama_arg_parser")
                     for (const auto & arg : opt.args)
                     {
                         // change to green color
-                        std::cout << "\x1b[32m" << "\t" << arg << "\x1b[0m" << std::endl;
+                        // std::cout << "\x1b[32m" << "\t" << arg << "\x1b[0m" << std::endl;
+                        data[arg] = data[arg] | (1 << static_cast<int>(ex));
                     }
+            }
+        }
+
+        // Helper: center text in fixed width
+        static auto centerText = [](const string & text, int width) {
+            int padding = width - text.size();
+            int left    = padding / 2;
+            int right   = padding - left;
+            return string(left, ' ') + text + string(right, ' ');
+        };
+
+        // Helper: print row separator line
+        // void printSeparator(int columns, int cell_width)
+
+        data["--alias"] = 7;
+        if (true)
+        {
+            int row_count    = data.size();
+            int column_count = 0;
+            if (!data.empty())
+                column_count = static_cast<int>(LLAMA_EXAMPLE_COUNT);
+
+            // string, remove the prefix
+            auto remove_prefix_LLAMA_EXAMPLE = [](std::string str) -> std::string {
+                if (str.find("LLAMA_EXAMPLE_") == 0)
+                    str.erase(0, 12);
+                return str;
+            };
+
+            std::array<int, LLAMA_EXAMPLE_COUNT> cell_widths;
+            cell_widths[0] = 20;
+            for (int i = 0; i < LLAMA_EXAMPLE_COUNT; i++)
+            {
+                std::string str    = llama_example_to_str(static_cast<llama_example>(i));
+                str                = remove_prefix_LLAMA_EXAMPLE(str);
+                cell_widths[i + 1] = str.size();
+            }
+
+            static auto printSeparator = [&cell_widths](int columns) {
+                cout << "|";
+                for (int i = 0; i < columns + 1; ++i)
+                { // +1 for row header
+                    cout << string(cell_widths[i], '-') << "|";
+                }
+                cout << endl;
+            };
+            // Print header (first row)
+            cout << "|" << centerText("", cell_widths[0]);
+            for (int i = 0; i < LLAMA_EXAMPLE_COUNT; i++)
+            {
+                std::string str = llama_example_to_str(static_cast<llama_example>(i));
+                str             = remove_prefix_LLAMA_EXAMPLE(str);
+                cout << "|" << centerText(str, cell_widths[i + 1]);
+            }
+            cout << "|\n";
+
+            printSeparator(column_count);
+
+            // For each column, print the column name and v's from each row
+            for (auto row : data)
+            {
+                // cout << row.first << std::endl;
+                // cout << "|" << centerText(row.first, cell_widths[0]);
+                //
+                cout << "|" << centerText(row.first, cell_widths[0]);
+                for (int col = 0; col < static_cast<int>(LLAMA_EXAMPLE_COUNT); col++)
+                {
+                    string cell = ((row.second & (1 << col)) != 0) ? "v" : "";
+                    cout << "|" << centerText(cell, cell_widths[col + 1]);
+                }
+                cout << "|\n";
+                printSeparator(column_count);
             }
         }
     }
 
+    if (false)
     { // test: given an argment, check the return common param
         common_params params;
         // lambda function, convert from vector of string to vectory of char *
@@ -315,7 +392,6 @@ TEST_CASE("test_fim_model")
         printf("\n");
     }
     {
-
         INFO("step: decoding prompt");
 #define TC 2
 #if TC == 1
