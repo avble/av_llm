@@ -79,9 +79,13 @@ jobs:
           $VulkanInstallerUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/VulkanSDK-$VulkanVersion-Installer.exe"
           Invoke-WebRequest -Uri $VulkanInstallerUrl -OutFile VulkanSDK-Installer.exe
           Start-Process .\VulkanSDK-Installer.exe -ArgumentList '--accept-licenses --default-answer --confirm-command install' -Wait
-          # Find VulkanSDK installation directory (default for LunarG installer)
-          $VulkanRoot = "$Env:VULKAN_SDK"
-          echo "VULKAN_SDK=$VulkanRoot" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          # Read installed Vulkan path from registry
+
+          $regPath = "HKLM:\SOFTWARE\Khronos\Vulkan\SDK"
+          $installPath = Get-ItemPropertyValue -Path $regPath -Name $VulkanVersion
+
+          # Set VULKAN_SDK for subsequent steps
+          echo "VULKAN_SDK=$installPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Set up vcpkg and install libcurl
         shell: powershell
