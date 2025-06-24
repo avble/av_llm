@@ -14,6 +14,125 @@
 #include <ciso646>
 #endif
 
+TEST_CASE("llama_arg_parser")
+{
+
+    // task: list all options associated with llama_example
+    if (true)
+    {
+        common_params common_param;
+        auto llama_example_to_str = [](llama_example ex) -> std::string {
+            switch (ex)
+            {
+            case LLAMA_EXAMPLE_COMMON:
+                return "LLAMA_EXAMPLE_COMMON";
+            case LLAMA_EXAMPLE_SPECULATIVE:
+                return "LLAMA_EXAMPLE_SPECULATIVE";
+            case LLAMA_EXAMPLE_MAIN:
+                return "LLAMA_EXAMPLE_MAIN";
+            case LLAMA_EXAMPLE_EMBEDDING:
+                return "LLAMA_EXAMPLE_EMBEDDING";
+            case LLAMA_EXAMPLE_PERPLEXITY:
+                return "LLAMA_EXAMPLE_PERPLEXITY";
+            case LLAMA_EXAMPLE_RETRIEVAL:
+                return "LLAMA_EXAMPLE_RETRIEVAL";
+            case LLAMA_EXAMPLE_PASSKEY:
+                return "LLAMA_EXAMPLE_PASSKEY";
+            case LLAMA_EXAMPLE_IMATRIX:
+                return "LLAMA_EXAMPLE_IMATRIX";
+            case LLAMA_EXAMPLE_BENCH:
+                return "LLAMA_EXAMPLE_BENCH";
+            case LLAMA_EXAMPLE_SERVER:
+                return "LLAMA_EXAMPLE_SERVER";
+            case LLAMA_EXAMPLE_CVECTOR_GENERATOR:
+                return "LLAMA_EXAMPLE_CVECTOR_GENERATOR";
+            case LLAMA_EXAMPLE_EXPORT_LORA:
+                return "LLAMA_EXAMPLE_EXPORT_LORA";
+            case LLAMA_EXAMPLE_MTMD:
+                return "LLAMA_EXAMPLE_MTMD";
+            case LLAMA_EXAMPLE_LOOKUP:
+                return "LLAMA_EXAMPLE_LOOKUP";
+            case LLAMA_EXAMPLE_PARALLEL:
+                return "LLAMA_EXAMPLE_PARALLEL";
+            case LLAMA_EXAMPLE_TTS:
+                return "LLAMA_EXAMPLE_TTS";
+            case LLAMA_EXAMPLE_COUNT:
+                return "LLAMA_EXAMPLE_COUNT";
+            default:
+                return "UNKNOWN";
+            }
+        };
+
+        // interate over the enum LLAMA_EXAMPLE_COUNT
+
+        for (int ex = 0; ex < LLAMA_EXAMPLE_COUNT; ex++)
+        {
+
+            // conver the below code using std::cout in stead of printf
+            /*
+    printf("\x1b[31m"
+    "%s"
+    "\x1b[0m\n",
+    llama_example_to_str(static_cast<llama_example>(ex)).c_str());
+            */
+
+            std::cout << "\x1b[31m" << llama_example_to_str(static_cast<llama_example>(ex)).c_str() << "\x1b[0m\n";
+            auto ctx_arg = common_params_parser_init(common_param, (enum llama_example) ex);
+            {
+                // print all option of ctx arg
+                for (const auto & opt : ctx_arg.options)
+                    for (const auto & arg : opt.args)
+                    {
+                        // change to green color
+                        std::cout << "\x1b[32m" << "\t" << arg << "\x1b[0m" << std::endl;
+                    }
+            }
+        }
+    }
+
+    { // test: given an argment, check the return common param
+        common_params params;
+        // lambda function, convert from vector of string to vectory of char *
+        auto vector_to_char = [](std::vector<std::string> & argv) -> std::vector<char *> {
+            std::vector<char *> res;
+            for (auto & arg : argv)
+            {
+                res.push_back(const_cast<char *>(arg.c_str()));
+            }
+            return res;
+        };
+
+        // print all memmber of common_params
+        auto print_all_llama_example = [](const common_params & params) {
+            std::cout << "common_params:" << std::endl;
+            std::cout << "  port: " << params.port << std::endl;
+            std::cout << "  n_predict: " << params.n_predict << std::endl;
+            std::cout << "  n_ctx: " << params.n_ctx << std::endl;
+            std::cout << "  n_batch: " << params.n_batch << std::endl;
+            std::cout << "  n_ubatch: " << params.n_ubatch << std::endl;
+            std::cout << "  n_keep: " << params.n_keep << std::endl;
+            // printf the all member of model struct
+            std::cout << "  param.model.path: " << params.model.path << std::endl;
+            std::cout << "  param.model.url: " << params.model.url << std::endl;
+            std::cout << "  param.model.hf_repo: " << params.model.hf_repo << std::endl;
+            std::cout << "  param.model.hf_file: " << params.model.hf_file << std::endl;
+        };
+
+        printf("before: \n");
+        print_all_llama_example(params);
+
+        std::vector<std::string> args = { "cli_app", "--fim-qwen-3b-default" };
+        if (!common_params_parse(args.size(), vector_to_char(args).data(), params, LLAMA_EXAMPLE_SPECULATIVE))
+        {
+            printf("failed \n");
+            REQUIRE(false);
+        }
+
+        printf("after: \n");
+        print_all_llama_example(params);
+    }
+}
+
 TEST_CASE("test_chat_template")
 {
     if (false)
@@ -32,8 +151,10 @@ TEST_CASE("test_chat_template")
         std::string template_str =
             "{{ bos_token }}{% for message in messages %}{% if (message['role'] == 'user') != (loop.index0 % 2 == 0) %}{{ "
             "raise_exception('Conversation roles must alternate user/assistant/user/assistant/...') }}{% endif %}{% if "
-            "message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == 'assistant' "
-            "%}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are supported!') "
+            "message['role'] == 'user' %}{{ '[INST] ' + message['content'] + ' [/INST]' }}{% elif message['role'] == "
+            "'assistant' "
+            "%}{{ message['content'] + eos_token}}{% else %}{{ raise_exception('Only user and assistant roles are "
+            "supported!') "
             "}}{% endif %}{% endfor %}";
 
         std::string expected_output = "[INST] You are a helpful assistant\nHello [/INST]Hi there</s>[INST] Who are you [/INST]   I "
@@ -60,10 +181,11 @@ TEST_CASE("test_chat_template")
             { "user", "Another question" },
         };
 
-        std::string template_str =
-            "{% for message in messages %}{% set role = message['role'] | lower %}{% if role == 'user' %}{% set role = 'HUMAN' "
-            "%}{% endif %}{% set role = role | upper %}{{ '<role>' + role + '</role>' + message['content'] }}{% endfor %}{% if "
-            "add_generation_prompt %}{{ '<role>ASSISTANT</role>' }}{% endif %}";
+        std::string template_str = "{% for message in messages %}{% set role = message['role'] | lower %}{% if role == "
+                                   "'user' %}{% set role = 'HUMAN' "
+                                   "%}{% endif %}{% set role = role | upper %}{{ '<role>' + role + '</role>' + "
+                                   "message['content'] }}{% endfor %}{% if "
+                                   "add_generation_prompt %}{{ '<role>ASSISTANT</role>' }}{% endif %}";
 
         std::string expected = "<role>SYSTEM</role>You are a helpful assistant<role>HUMAN</role>Hello<role>ASSISTANT</role>Hi "
                                "there<role>HUMAN</role>Who are you<role>ASSISTANT</role>   I am an assistant   "
