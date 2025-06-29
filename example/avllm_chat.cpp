@@ -1,6 +1,3 @@
-/*
-This sample tool is insprised from llama.cpp (simple_chat)
-*/
 #include "arg.h"
 #include "common.h"
 #include "llama.h"
@@ -30,12 +27,12 @@ static void print_usage(int, char ** argv)
     printf("\n");
 }
 
-
 int main(int argc, char ** argv)
 {
     // Use a parameter struct similar to llama.cpp
     common_params params;
-    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage)) {
+    if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage))
+    {
         return 1;
     }
 
@@ -45,51 +42,52 @@ int main(int argc, char ** argv)
     llama_backend_init();
     llama_numa_init(params.numa);
 
-
-    // Threadpool/Backend (ggml) setup (refactored to match llama.cpp main.cpp)
-    auto *cpu_dev = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
-    if (!cpu_dev) {
-        LOG_ERR("%s: no CPU backend found\n", __func__);
-        return 1;
-    }
-    auto *reg = ggml_backend_dev_backend_reg(cpu_dev);
-    auto *ggml_threadpool_new_fn = (decltype(ggml_threadpool_new) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_new");
-    auto *ggml_threadpool_free_fn = (decltype(ggml_threadpool_free) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_free");
-
-    struct ggml_threadpool_params tpp =
-        ggml_threadpool_params_from_cpu_params(params.cpuparams);
-
-    struct ggml_threadpool *threadpool = ggml_threadpool_new_fn(&tpp);
-    if (!threadpool) {
-        LOG_ERR("%s: threadpool create failed : n_threads %d\n", __func__, tpp.n_threads);
-        return 1;
-    }
-
-
-    // Model and context initialization (using helpers)
     LOG_INF("%s: load the model and apply lora adapter, if any\n", __func__);
     common_init_result llama_init = common_init_from_params(params);
 
-    llama_model *model = llama_init.model.get();
-    llama_context *ctx = llama_init.context.get();
+    llama_model * model = llama_init.model.get();
+    llama_context * ctx = llama_init.context.get();
 
-    if (model == nullptr) {
+    if (model == nullptr)
+    {
         LOG_ERR("%s: error: unable to load model\n", __func__);
-        return 1;
+        return -1;
     }
-    if (ctx == nullptr) {
+    if (ctx == nullptr)
+    {
         LOG_ERR("%s: error: failed to create the llama_context\n", __func__);
         return -1;
     }
 
+    // Threadpool/Backend (ggml) setup (refactored to match llama.cpp main.cpp)
+    auto * cpu_dev = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
+    if (!cpu_dev)
+    {
+        LOG_ERR("%s: no CPU backend found\n", __func__);
+        return 1;
+    }
+    auto * reg                    = ggml_backend_dev_backend_reg(cpu_dev);
+    auto * ggml_threadpool_new_fn = (decltype(ggml_threadpool_new) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_new");
+    auto * ggml_threadpool_free_fn =
+        (decltype(ggml_threadpool_free) *) ggml_backend_reg_get_proc_address(reg, "ggml_threadpool_free");
+
+    struct ggml_threadpool_params tpp = ggml_threadpool_params_from_cpu_params(params.cpuparams);
+
+    struct ggml_threadpool * threadpool = ggml_threadpool_new_fn(&tpp);
+    if (!threadpool)
+    {
+        LOG_ERR("%s: threadpool create failed : n_threads %d\n", __func__, tpp.n_threads);
+        return 1;
+    }
 
     // Attach threadpool to context
     llama_attach_threadpool(ctx, threadpool, nullptr);
 
-        // ---- Sampling setup refactored to match llama.cpp (main.cpp) ----
-    auto &sparams = params.sampling;
-    common_sampler *smpl = common_sampler_init(model, sparams);
-    if (!smpl) {
+    // ---- Sampling setup refactored to match llama.cpp (main.cpp) ----
+    auto & sparams        = params.sampling;
+    common_sampler * smpl = common_sampler_init(model, sparams);
+    if (!smpl)
+    {
         LOG_ERR("%s: failed to initialize sampling subsystem\n", __func__);
         ggml_threadpool_free_fn(threadpool);
         llama_backend_free();
@@ -97,8 +95,8 @@ int main(int argc, char ** argv)
     }
 
     LOG_INF("sampler seed: %u\n", common_sampler_get_seed(smpl));
-    //LOG_INF("sampler params: \n%s\n", sparams.print().c_str());
-    //LOG_INF("sampler chain: %s\n", common_sampler_print(smpl).c_str());
+    // LOG_INF("sampler params: \n%s\n", sparams.print().c_str());
+    // LOG_INF("sampler chain: %s\n", common_sampler_print(smpl).c_str());
     std::cout << std::endl;
 
     const char * chat_tmpl = llama_model_chat_template(model, /* name */ nullptr);
@@ -220,6 +218,8 @@ int main(int argc, char ** argv)
                 fprintf(stderr, "%s, failed to convert a token \n", __func__);
                 return 0;
             }
+
+            // handle utf-8 character
 
             std::string out(buf, n);
             printf("%s", out.c_str());

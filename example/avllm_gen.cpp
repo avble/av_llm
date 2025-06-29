@@ -9,13 +9,13 @@ This sample tool is insprised from llama.cpp (simple)
 #include "sampling.h"
 
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
 #include <thread>
 #include <vector>
-#include <cstring>
 
 #include <inttypes.h>
 
@@ -30,8 +30,15 @@ static void print_usage(int, char ** argv)
     printf("\n");
 }
 
+/*
+> avllm_gen [model] @file:// @http://
+produce 1 shot
+*/
+
 int main(int argc, char ** argv)
 {
+
+    common_params params;
 
     std::string model_path;
     std::string prompt;

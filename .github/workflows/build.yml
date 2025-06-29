@@ -1,7 +1,6 @@
 name: Build and Test
 
-on: 
-  workflow_dispatch
+on: workflow_dispatch
 
 jobs:
   macOS-arm64:
@@ -14,11 +13,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: prepare build
+        id: prepare
+        run: brew install curl
+
       - name: Build
         id: cmake_build
         run: |
           cmake --preset arm64-apple-clang-release
-          cmake --build build-arm64-apple-clang-release --config Release
+          cmake --build build-arm64-apple-clang-release
 
   macOS-x64:
     runs-on: macos-13
@@ -30,11 +33,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: prepare build
+        id: prepare
+        run: brew install curl
+
       - name: Build
         id: cmake_build
         run: |
-          cmake -B build
-          cmake --build build
+          cmake --preset x64-apple-clang-release
+          cmake --build build-x64-apple-clang-release
 
   Ubuntu:
     runs-on: ubuntu-22.04
@@ -46,39 +53,91 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: prepare build
+        id: prepare
+        run: sudo apt-get install libcurl4-openssl-dev
+
       - name: Build
         id: cmake_build
         run: |
-          cmake -B build
-          cmake --build build
+          cmake --preset x64-Ubuntu-gcc-release
+          cmake --build build-x64-Ubuntu-gcc-release
 
-  Windows:
+#  Windows-vulkan:
+#    runs-on: windows-latest
+#
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#        with:
+#          fetch-depth: 0
+#
+#      - name: Download and Install Vulkan SDK
+#        shell: pwsh
+#        run: |
+#          $VulkanVersion = "1.3.280.0"
+#          $VulkanInstallerUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/VulkanSDK-$VulkanVersion-Installer.exe"
+#          Invoke-WebRequest -Uri $VulkanInstallerUrl -OutFile VulkanSDK-Installer.exe
+#          Start-Process .\VulkanSDK-Installer.exe -ArgumentList '--accept-licenses --default-answer --confirm-command install' -Wait
+#          # Read installed Vulkan path from registry
+#
+#          $regPath = "HKLM:\SOFTWARE\Khronos\Vulkan\SDK"
+#          $installPath = Get-ItemPropertyValue -Path $regPath -Name $VulkanVersion
+#
+#          # Set VULKAN_SDK for subsequent steps
+#          echo "VULKAN_SDK=$installPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+#
+#      - name: Set up vcpkg and install libcurl
+#        shell: powershell
+#        run: |
+#          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+#          cd C:\vcpkg
+#          .\bootstrap-vcpkg.bat
+#          .\vcpkg.exe install curl:x64-windows
+#          choco install ninja -y
+#
+#
+#      - name: Build with Vulkan
+#        shell: cmd
+#        run: |
+#          echo VULKAN_SDK is %VULKAN_SDK%
+#          build_vulkan.bat
+
+  windows-sycl:
     runs-on: windows-latest
 
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7cd9bba0-7aab-4e30-b3ae-2221006a4a05/intel-oneapi-base-toolkit-2025.1.1.34_offline.exe
+      WINDOWS_DPCPP_MKL: intel.oneapi.win.cpp-dpcpp-common:intel.oneapi.win.mkl.devel:intel.oneapi.win.dnnl:intel.oneapi.win.tbb.devel
+      ONEAPI_ROOT: "C:/Program Files (x86)/Intel/oneAPI"
+
     steps:
-      - name: Checkout
+      - name: Clone
+        id: checkout
         uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
 
-      - name: Download and Install Vulkan SDK
-        shell: pwsh
+      - name: Install
         run: |
-          $VulkanVersion = "1.3.280.0"
-          $VulkanInstallerUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/VulkanSDK-$VulkanVersion-Installer.exe"
-          Invoke-WebRequest -Uri $VulkanInstallerUrl -OutFile VulkanSDK-Installer.exe
-          Start-Process .\VulkanSDK-Installer.exe -ArgumentList '--accept-licenses --default-answer --confirm-command install' -Wait
-          # Find VulkanSDK installation directory (default for LunarG installer)
-          $VulkanRoot = "$Env:VULKAN_SDK"
-          echo "VULKAN_SDK=$VulkanRoot" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+          scripts/install-oneapi.bat $WINDOWS_BASEKIT_URL $WINDOWS_DPCPP_MKL
 
-      - name: Remove local-only vcvars64.bat calls
-        shell: pwsh
+      - name: Set up vcpkg and install libcurl
+        shell: powershell
         run: |
-          (Get-Content build_vulkan.bat) -replace 'call\s+"?E:\\software_vs\\VC\\Auxiliary\\Build\\vcvars64\.bat"?', '' | Set-Content build_vulkan_ci.bat
+          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg.exe install curl:x64-windows
+          choco install ninja -y
 
-      - name: Build with Vulkan
+      - name: Build
+        id: cmake_build
         shell: cmd
         run: |
-          build_vulkan_ci.bat
+          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" intel64 --force
+          build_sycl.bat

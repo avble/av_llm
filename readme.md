@@ -2,13 +2,52 @@
 
 - Gen AI stuff
 
-# Installation
+<details>
+<summary> Pre-built </summary>
+# Pre-built 
 
-| OS      | Download link |
-| ------- | ------------- |
-| macOS   | T.B.U         |
-| Windows | T.B.U         |
-| Linux   | T.B.U         |
+ | OS      | Download link |
+ |---------|---------------|
+ | macOS   | T.B.U         |
+ | Windows | T.B.U         |
+ | Linux   | T.B.U         |
+
+
+## GPU based package 
+To take avantage of GPU's memory and computation.
+Support various GPU's library/platform.
+
+ | OS      | CUDA | VULKAN | SYCL |
+ |---------|------|--------|------|
+ | Windows |      |        |      |
+ | Linux   |      |        |      |
+ | macOS   | x    | x      | x    |
+
+</details>
+
+# Fetures
+## FIM (Finish-In-Middle)
+- [x] File-level 
+- [] Rep-level 
+
+* [paper-1](https://arxiv.org/pdf/2409.12186)
+
+## OpenAI
+* Chat completion
+- [x] Default
+- [x] stream
+- [] Image input
+- [] function
+
+
+# Integrations
+
+# Compilation
+
+'''
+$ # clone source code
+$ cmake -B build && cmake --build build
+'''
 
 # Quick started
 
@@ -34,31 +73,30 @@ $av_llm serve <path to module .gguf file>
 - A lightweight OpenAI API compatible server: [av_connect http server](https://github.com/avble/av_connect.git) in C++
 - LLM Inference engine: by [llama.cp](https://github.com/ggerganov/llama.cpp.git)
 
+
+# Some demo
++ infill
++ rerank
++ server completion 
+
 # Models
 
-| Model                      | ~GB     | Tags         | Linked                                                              | Remark |
-| -------------------------- | ------- | ------------ | ------------------------------------------------------------------- | ------ |
-| Devstral-Small-2505 (gguf) | 13 GB   | coding       | https://huggingface.co/mistralai/Devstral-Small-2505_gguf/tree/main |        |
-| Gema 2B                    | 10Gb    |              | https://huggingface.co/google/gemma-1.1-2b-it-GGUF/tree/main        |        |
-| Gemma-3 4b                 | 3.16GB  | general chat | https://huggingface.co/google/gemma-3-4b-it-qat-q4_0-gguf/tree/main | v      |
-| Phi-4                      | > 3.5GB |              | https://huggingface.co/microsoft/phi-4-gguf/tree/main               | x      |
-| Phi-3 Inst                 | 2.2 GB  |              | https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf        | x      |
-| Binet                      | 1.19G   | general chat | https://huggingface.co/microsoft/bitnet-b1.58-2B-4T-gguf/tree/main  | v      |
-| Qwen3-4B                   | ~3 Gb   | coding       | https://huggingface.co/Qwen/Qwen3-4B-GGUF                           | v      |
-|                            |         |              |                                                                     |        |
+## Source Code
+### Fill-in-middle (fim) model
 
-# Supported model
+Qwen2.5-Coder-1.5B-Q8_0-GGUF
 
-This application is built on the top of [llama.cpp](https://github.com/ggerganov/llama.cpp), so it should work any model which the [llama.cpp](https://github.com/ggerganov/llama.cpp) supports
+### Code instruct
 
-- LLaMA 1
-- LLaMA 2
-- LLaMA 3
-- [Mistral-7B](https://huggingface.co/mistralai/Mistral-7B-v0.1)
-- [Mixtral MoE](https://huggingface.co/models?search=mistral-ai/Mixtral)
-- [DBRX](https://huggingface.co/databricks/dbrx-instruct)
-- [Falcon](https://huggingface.co/models?search=tiiuae/falcon)
-- [Chinese-LLaMA-Alpaca](https://github.com/ymcui/Chinese-LLaMA-Alpaca)
+## General chat
+
+## List models
+
+| Model                                                                                             | ~GB   | Tags          | Remark  |
+|---------------------------------------------------------------------------------------------------|-------|---------------|---------|
+| (Qwen3-4B)[https://huggingface.co/Qwen/Qwen3-4B-GGUF]                                             | ~3 Gb | coding, think | Q4, K_M |
+| (Qwen2.5-Coder-3B-Q8_0-GGUF)[https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF] |       | coding, FIM   |         |
+|                                                                                                   |       |               |         |
 
 # Known limitation
 

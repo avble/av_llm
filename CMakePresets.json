@@ -1,5 +1,5 @@
 {
-	"version": 4,
+	"version": 1,
 	"configurePresets": [
 		{
 			"name":  "base-ninja",
@@ -12,8 +12,7 @@
 			}
 		},
 		{
-			"name":  "base-vs",
-			"hidden": true,
+			"name":  "base-vs", "hidden": true,
 			"generator":   "Visual Studio 17 2022",
 			"binaryDir":   "${sourceDir}/build-${presetName}",
 			"cacheVariables": {
@@ -22,9 +21,32 @@
 			}
 		},
 
+		{
+			"name": "sycl-base",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/build-${presetName}",
+			"cacheVariables": {
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+				"CMAKE_CXX_COMPILER": "icx",
+				"CMAKE_C_COMPILER": "cl",
+				"GGML_SYCL": "ON",
+				"CMAKE_INSTALL_RPATH": "$ORIGIN;$ORIGIN/.."
+			}
+		},
+
 		{ "name": "debug",    "hidden": true, "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
 		{ "name": "release",  "hidden": true, "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
 		{ "name": "reldbg",   "hidden": true, "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } },
+
+		{"name": "llama",
+			"hidden": true,
+			"cacheVariables": {
+				"LLAMA_BUILD_COMMON": "ON",
+				"LLAMA_BUILD_TOOLS": "ON",
+				"LLAMA_BUILD_SERVER": "ON"
+			}
+		},
 
 		{ "name": "vulkan",
 			"hidden": true,
@@ -49,12 +71,23 @@
 			}
 		},
 
-		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "debug" ] },
-    		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "reldbg" ] },
-		
-		{ "name": "x64-windows-msvc-debug", "inherits": [ "base-ninja", "debug" ] },
-		{ "name": "x64-windows-msvc-release", "inherits": [ "base-ninja", "reldbg" ] },
-		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "debug"] },
-		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "release"] }
+		{ "name": "x64-Ubuntu-gcc-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-Ubuntu-gcc-release", "inherits": [ "base-ninja", "llama", "release" ] },
+
+		{ "name": "arm64-apple-clang-debug", "inherits": [ "base-ninja", "arm64-apple-clang", "llama", "debug" ] },
+		{ "name": "arm64-apple-clang-release", "inherits": [ "base-ninja", "arm64-apple-clang", "llama", "reldbg" ] },
+
+		{ "name": "x64-apple-clang-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-apple-clang-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
+
+
+		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
+		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
+
+		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama", "debug"] },
+		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama", "release"] },
+
+		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "llama", "debug" ] },
+		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "llama", "release" ] }
 	]
 }

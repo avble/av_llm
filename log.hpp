@@ -1,5 +1,5 @@
-#pragma once
-
+#ifndef _AVLLM_LOG_H_
+#define _AVLLM_LOG_H_
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
@@ -18,7 +18,8 @@ enum class log_level
 namespace {
 // Default log level based on build type
 #ifdef NDEBUG
-static log_level current_log_level = log_level::LOG_INFO; // Release build
+// static log_level current_log_level = log_level::LOG_INFO; // Release build
+static log_level current_log_level = log_level::LOG_TRACE; // Release build
 #else
 static log_level current_log_level = log_level::LOG_DEBUG; // Debug build
 #endif
@@ -115,3 +116,5 @@ private:
 #define AVLLM_LOG_TRACE_FUNCTION avllm::logger_function_trace x_trace_123_("", __FUNCTION__);
 #define AVLLM_TRACE_CLS_FUNC_TRACE avllm::logger_function_trace x_trace_123_(typeid(this).name(), __FUNCTION__);
 #define AVLLM_LOG_TRACE_SCOPE(xxx) avllm::logger_function_trace x_trace_123_("", xxx);
+
+#endif
