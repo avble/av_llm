@@ -1216,7 +1216,6 @@ void server_cmd_handler(std::filesystem::path model_path)
         };
 
         //
-
         route_.get("health", health_handler);
     }
 

@@ -23,3 +23,4 @@ target_link_libraries(test_curl CURL::libcurl Catch2)
 
 add_executable(llama_option_table llama_print_option_tbl.cpp)
 target_link_libraries(llama_option_table common llama)
+

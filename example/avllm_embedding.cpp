@@ -79,18 +79,28 @@ int main(int argc, char * argv[])
 
     // pooling method
     enum llama_pooling_type pooling_type = llama_pooling_type(ctx);
-    printf("[DEBUG] pooling type: %d \n", pooling_type);
 
+    std::vector<float> embeddings(n_embd);
     if (pooling_type == LLAMA_POOLING_TYPE_NONE)
     {
-        std::vector<float> embeddings(n_embd * tokens.size());
+        embeddings.resize(n_embd * tokens.size());
         for (int i = 0; i < tokens.size(); i++)
         {
             float * embd      = llama_get_embeddings_ith(ctx, i);
             float * const out = embeddings.data() + i * n_embd;
             common_embd_normalize(embd, out, n_embd, params.embd_normalize);
         }
+    }
+    else
+    {
+        float * embd      = llama_get_embeddings_seq(ctx, 0);
+        float * const out = embeddings.data();
+        common_embd_normalize(embd, out, n_embd, params.embd_normalize);
+    }
 
+    // print output
+    if (pooling_type == LLAMA_POOLING_TYPE_NONE)
+    {
         for (int i = 0; i < tokens.size(); i++)
         {
             printf("[Embedding][%3d]: ", i);
@@ -101,16 +111,12 @@ int main(int argc, char * argv[])
     }
     else
     {
-        std::vector<float> embeddings(n_embd);
-        float * embd         = llama_get_embeddings_seq(ctx, 0);
-        float * const output = embeddings.data();
-        common_embd_normalize(embd, output, n_embd, params.embd_normalize);
         for (int i = 0; i < std::min(3, n_embd); i++)
             printf("%.6f ", *(embeddings.data() + i));
         printf("...");
 
         for (int i = 0; i < n_embd && i < 2; i++)
-            printf("%.6f ", *(embeddings.data() + n_embd - i - 1));
+            printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
 
         printf("\n");
     }
