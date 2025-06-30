@@ -121,3 +121,7 @@ int main(int argc, char * argv[])
         printf("\n");
     }
 }
+
+/*
+curl 127.0.0.1:8080/v1/embeddings -H "Content-Type: application/json" -d '{"input": "Your text string goes here", "model":"text-embedding-3-small" }'
+*/

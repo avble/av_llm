@@ -3,8 +3,10 @@
 It can be used, modified.
 */
 
+#include "arg.h"
 #include "chat.h"
 #include "common.h"
+#include "llama-cpp.h"
 #include "llama.h"
 #include "log.h"
 #include "log.hpp"
@@ -16,6 +18,7 @@ It can be used, modified.
 namespace av_llm {
 #include "index.html.gz.hpp"
 }
+#include "src/llama_helper.hpp"
 
 #include "utils.hpp"
 
@@ -27,6 +30,7 @@ namespace av_llm {
 #include <fstream>
 #include <mutex>
 #include <numeric>
+#include <optional>
 #include <regex>
 #include <string>
 #include <thread>
@@ -74,6 +78,7 @@ struct xoptions
 
     // others
     std::string model_url_or_alias;
+    std::string model_path_emb;
 
     // llama-server
     std::string llama_srv_args;
@@ -85,21 +90,11 @@ static void server_cmd_handler(std::filesystem::path model_path);
 static void chat_cmd_handler(std::filesystem::path model_path);
 static void llama_srv_cmd_handler(int argc, char * argv[]);
 
-// prototype
-static void model_cmd_handler(std::string sub_cmd);
-static void server_cmd_handler(std::filesystem::path model_path);
-
 // global variable
 static xoptions xoptions_;
 std::filesystem::path home_path;
 std::filesystem::path app_data_path;
-
-static auto ltrim = [](std::string & str) {
-    int i = 0;
-    while (i < str.size() && std::isspace(static_cast<unsigned char>(str[i])))
-        i++;
-    str.erase(0, i);
-};
+common_params cparams_emb;
 
 int main(int argc, char ** argv)
 {
@@ -125,60 +120,66 @@ int main(int argc, char ** argv)
     pre_config_model_init();
 
     auto process_chat_or_serve = [](std::function<void(std::string)> chat_or_serve_func) -> int { // handle the syntax
+        if (xoptions_.model_url_or_alias != "")
         {
-            // process if the .gguf file
-            // AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, xoptions_.model_url_or_alias.c_str());
-            std::filesystem::path model_filename = xoptions_.model_url_or_alias;
-            if (model_filename.extension() == ".gguf")
             {
-                AVLLM_LOG_DEBUG("%s:%d - %s:%s \n", __func__, __LINE__, app_data_path.generic_string().c_str(),
-                                model_filename.c_str());
-
-                std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename) ? model_filename
-                    : std::filesystem::is_regular_file(app_data_path / model_filename)
-                    ? std::optional<std::filesystem::path>(app_data_path / model_filename)
-                    : std::nullopt;
-
-                if (model_path.has_value())
+                // process if the .gguf file
+                // AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, xoptions_.model_url_or_alias.c_str());
+                std::filesystem::path model_filename = xoptions_.model_url_or_alias;
+                if (model_filename.extension() == ".gguf")
                 {
-                    AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_path.value().generic_string().c_str());
-                    chat_or_serve_func(model_path.value().generic_string());
+                    AVLLM_LOG_DEBUG("%s:%d - %s:%s \n", __func__, __LINE__, app_data_path.generic_string().c_str(),
+                                    model_filename.c_str());
+
+                    std::optional<std::filesystem::path> model_path = std::filesystem::is_regular_file(model_filename)
+                        ? model_filename
+                        : std::filesystem::is_regular_file(app_data_path / model_filename)
+                        ? std::optional<std::filesystem::path>(app_data_path / model_filename)
+                        : std::nullopt;
+
+                    if (model_path.has_value())
+                    {
+                        AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, model_path.value().generic_string().c_str());
+                        chat_or_serve_func(model_path.value().generic_string());
+                    }
+                    AVLLM_LOG_DEBUG("%s:%d \n", __func__, __LINE__);
+
+                    return 0;
                 }
-                AVLLM_LOG_DEBUG("%s:%d \n", __func__, __LINE__);
-
-                return 0;
             }
-        }
 
-        {
-            // handle precofig model
-            if (std::string url = pre_config_model[xoptions_.model_url_or_alias]; url != "")
             {
-                AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
+                // handle precofig model
+                if (std::string url = pre_config_model[xoptions_.model_url_or_alias]; url != "")
+                {
+                    AVLLM_LOG_DEBUG("%s:%d model url: %s\n", __func__, __LINE__, url.c_str());
 
-                std::filesystem::path model_filename = [&url]() -> std::filesystem::path {
-                    auto last_slash = url.find_last_of("/");
-                    if (last_slash != std::string::npos)
-                        return url.substr(last_slash + 1);
-                    return "";
-                }();
+                    std::filesystem::path model_filename = [&url]() -> std::filesystem::path {
+                        auto last_slash = url.find_last_of("/");
+                        if (last_slash != std::string::npos)
+                            return url.substr(last_slash + 1);
+                        return "";
+                    }();
 
-                if (not std::filesystem::is_regular_file(app_data_path / model_filename))
-                { // do not have file in local, donwload it
-                    AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
-                                    model_filename.generic_string().c_str(), url.c_str());
+                    if (not std::filesystem::is_regular_file(app_data_path / model_filename))
+                    { // do not have file in local, donwload it
+                        AVLLM_LOG_DEBUG("%s:%d does NOT have model. So download it: %s from url: %s \n", __func__, __LINE__,
+                                        model_filename.generic_string().c_str(), url.c_str());
 
-                    downnload_file_and_write_to_file(url, model_filename);
+                        downnload_file_and_write_to_file(url, model_filename);
+                    }
+                    else
+                        AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__, model_filename.generic_string().c_str());
+
+                    chat_or_serve_func((app_data_path / model_filename).generic_string());
+
+                    return 0;
                 }
-                else
-                    AVLLM_LOG_DEBUG("%s:%d have model at:  %s \n", __func__, __LINE__, model_filename.generic_string().c_str());
-
-                chat_or_serve_func((app_data_path / model_filename).generic_string());
-
-                return 0;
             }
         }
-        { // todo: handle the descrition (http://)
+        else
+        {
+            chat_or_serve_func("");
         }
 
         return 0;
@@ -220,7 +221,8 @@ int main(int argc, char ** argv)
     // ---- SERVE command ----
     auto serve = app.add_subcommand("serve", "Serve model");
     serve->add_option("-p,--port", xoptions_.port, "Serve port");
-    serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path")->required();
+    serve->add_option("--emb-model", xoptions_.model_path_emb, "Embedding Model path");
+    serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path");
 
     // -- llama comand ----
     auto llama = app.add_subcommand("llama", "LLAMA server command");
@@ -540,75 +542,85 @@ static void chat_cmd_handler(std::filesystem::path model_path)
 
 void server_cmd_handler(std::filesystem::path model_path)
 {
-    bool silent = true;
+
+    bool silent = false;
+    std::optional<llama_model *> model_general;
+    common_chat_templates_ptr chat_templates;
+    llama_sampler_ptr smpl_ptr;
+
+    std::optional<llama_model *> model_embedding;
 
     ggml_backend_load_all();
 
-    llama_model * model = [&model_path]() -> llama_model * {
-        llama_model_params model_params = llama_model_default_params();
-        model_params.n_gpu_layers       = xoptions_.ngl;
-        return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
-    }();
-    if (model == nullptr)
+    if (xoptions_.model_url_or_alias != "")
     {
-        AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
-        return;
+        llama_model * model = [&model_path]() -> llama_model * {
+            llama_model_params model_params = llama_model_default_params();
+            model_params.n_gpu_layers       = xoptions_.ngl;
+            return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
+        }();
+        if (model == nullptr)
+        {
+            AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
+        }
+        else
+            model_general = model;
+
+        // chat template
+        chat_templates = [&]() {
+            llama_model * model = model_general.value();
+            auto chat_templates = common_chat_templates_init(model, "");
+            try
+            {
+                common_chat_format_example(chat_templates.get(), false);
+            } catch (const std::exception & e)
+            {
+                AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
+                AVLLM_LOG_WARN("%s: The chat template that comes with this model is not yet supported, falling back to chatml. "
+                               "This may cause the "
+                               "model to output suboptimal responses\n",
+                               __func__);
+                chat_templates = common_chat_templates_init(model, "chatml");
+            }
+            if (!silent)
+            {
+                AVLLM_LOG_INFO("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
+                AVLLM_LOG_INFO("%s: chat example: %s \n", __func__,
+                               common_chat_format_example(chat_templates.get(), false).c_str());
+            }
+
+            return chat_templates;
+        }();
+
+        // initialize the sampler
+        // llama_sampler_ptr smpl;
+        smpl_ptr = []() {
+            auto sparams          = llama_sampler_chain_default_params();
+            sparams.no_perf       = false;
+            llama_sampler * smpl_ = llama_sampler_chain_init(sparams);
+            llama_sampler_chain_add(smpl_, llama_sampler_init_greedy());
+            return llama_sampler_ptr(smpl_);
+        }();
+        if (!smpl_ptr)
+        {
+            AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
+            return;
+        }
+        if (!silent)
+        {
+            llama_sampler_print(smpl_ptr.get());
+        }
     }
 
-    const llama_vocab * vocab = llama_model_get_vocab(model);
-    if (vocab == nullptr)
-    {
-        AVLLM_LOG_ERROR("%s: failed to get vocal from model \n", __func__);
-        return;
-    }
-    // // context initialize
     llama_context_params ctx_params = llama_context_default_params();
-    auto me_llama_context_init      = [&model, &ctx_params]() -> llama_context * {
-        ctx_params.no_perf = false;
-        ctx_params.n_ctx   = xoptions_.n_ctx;
-        ctx_params.n_batch = xoptions_.n_batch;
+
+    auto me_llama_context_init = [&model_general, &ctx_params]() -> llama_context * {
+        llama_model * model = model_general.value();
+        ctx_params.no_perf  = false;
+        ctx_params.n_ctx    = xoptions_.n_ctx;
+        ctx_params.n_batch  = xoptions_.n_batch;
         return llama_init_from_model(model, ctx_params);
     };
-
-    // chat template
-    auto chat_templates = common_chat_templates_init(model, "");
-    try
-    {
-        common_chat_format_example(chat_templates.get(), false);
-    } catch (const std::exception & e)
-    {
-        AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
-        AVLLM_LOG_WARN(
-            "%s: The chat template that comes with this model is not yet supported, falling back to chatml. This may cause the "
-            "model to output suboptimal responses\n",
-            __func__);
-        chat_templates = common_chat_templates_init(model, "chatml");
-    }
-    if (!silent)
-    {
-        AVLLM_LOG_INFO("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
-        AVLLM_LOG_INFO("%s: chat example: %s \n", __func__, common_chat_format_example(chat_templates.get(), false).c_str());
-    }
-
-    // initialize the sampler
-    llama_sampler * smpl = [&vocab]() {
-        auto sparams    = llama_sampler_chain_default_params();
-        sparams.no_perf = false;
-        auto smpl       = llama_sampler_chain_init(sparams);
-        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-        return smpl;
-    }();
-    if (smpl == nullptr)
-    {
-        AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-        return;
-    }
-    if (!silent)
-    {
-        printf("[DEBUG] llama samplers start. \n");
-        llama_sampler_print(smpl);
-        printf("[DEBUG] llama samplers end.\n");
-    }
 
     struct chat_session_t
     {
@@ -640,9 +652,10 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
     };
 
-    auto chat_session_get_n = [&vocab](llama_sampler * smpl, chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
-                                       std::function<int(int, std::string)> func_) -> int {
+    auto chat_session_get_n = [&](llama_sampler * smpl, chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
+                                  std::function<int(int, std::string)> func_) -> int {
         llama_token new_token;
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
 
         llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
 
@@ -698,14 +711,19 @@ void server_cmd_handler(std::filesystem::path model_path)
         return 0;
     };
 
-    auto chat_session_get = [&smpl, &vocab, &chat_session_get_n](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
-                                                                 std::function<int(int, std::string)> func_) -> int {
-        return chat_session_get_n(smpl, chat, prompt_tokens, func_);
+    auto chat_session_get = [&](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
+                                std::function<int(int, std::string)> func_) -> int {
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
+
+        return chat_session_get_n(smpl_ptr.get(), chat, prompt_tokens, func_);
     };
 
-    auto chat_template_to_tokens = [&chat_templates, &model, &smpl,
-                                    &vocab](chat_session_t & chat,
-                                            const std::vector<llama_chat_message> & chat_messages) -> std::vector<llama_token> {
+    auto chat_template_to_tokens =
+        [&chat_templates, &model_general](chat_session_t & chat,
+                                          const std::vector<llama_chat_message> & chat_messages) -> std::vector<llama_token> {
+        llama_model * model       = model_general.value();
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+
         { // get input string and apply template
 
             auto chat_tmpl = common_chat_templates_source(chat_templates.get());
@@ -745,17 +763,33 @@ void server_cmd_handler(std::filesystem::path model_path)
         return prompt_tokens;
     };
 
-    static auto preflight = [](http::response res) {
-        res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
-        res.set_header("Access-Control-Allow-Credentials", "true");
-        res.set_header("Access-Control-Allow-Methods", "POST");
-        res.set_header("Access-Control-Allow-Headers", "*");
-        res.set_content("", "text/html");
-        res.end();
-    };
+    // load embedding model if any
+    if (xoptions_.model_path_emb != "")
+    {
+        std::vector<const char *> argvv = { "av_llm", "--pooling", "last" };
+
+        if (common_params_parse(argvv.size(), (char **) argvv.data(), cparams_emb, LLAMA_EXAMPLE_EMBEDDING))
+        {
+            cparams_emb.embedding    = true;
+            cparams_emb.n_batch      = (cparams_emb.n_batch < cparams_emb.n_ctx) ? cparams_emb.n_ctx : cparams_emb.n_batch;
+            cparams_emb.n_ubatch     = cparams_emb.n_batch;
+            cparams_emb.n_gpu_layers = xoptions_.ngl;
+            // cparams_emb.
+            llama_model * model = []() {
+                llama_model_params mparams = common_model_params_to_llama(cparams_emb);
+                return llama_load_model_from_file(xoptions_.model_path_emb.c_str(), mparams);
+            }();
+            GGML_ASSERT(nullptr != model && "Can not initialize model");
+            if (model == nullptr)
+            {
+                AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
+            }
+            else
+                model_embedding = model;
+        }
+    }
 
     http::route route_;
-    route_.set_option_handler(preflight);
 
     { // embedded web
         // legacy api
@@ -789,6 +823,15 @@ void server_cmd_handler(std::filesystem::path model_path)
             std::string content_type;
         };
 
+        static auto preflight = [](http::response res) {
+            res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
+            res.set_header("Access-Control-Allow-Credentials", "true");
+            res.set_header("Access-Control-Allow-Methods", "POST");
+            res.set_header("Access-Control-Allow-Headers", "*");
+            res.set_content("", "text/html");
+            res.end();
+        };
+
         static auto web_handler = [&](http::response res) -> void {
             if (res.reqwest().get_header("accept-encoding").find("gzip") == std::string::npos)
             {
@@ -806,6 +849,8 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
             res.end();
         };
+
+        route_.set_option_handler(preflight);
         route_.get("/", web_handler);
         route_.get("/index.html", web_handler);
     }
@@ -848,7 +893,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         route_.get("/model", handle_model);
     }
 
-    // OpenAI API
+    // OpenAI API (chat, embedding)
     {
 
         static auto completions_chat_handler = [&](http::response res) -> void {
@@ -863,19 +908,21 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             CHAT_TYPE chat_type = CHAT_TYPE_DEFAULT;
 
-            json body_;
-            json messages_js;
-            [&body_, &messages_js](const std::string & body) mutable {
-                try
-                {
-                    body_       = json::parse(body);
-                    messages_js = body_.at("messages");
-                } catch (const std::exception & ex)
-                {
-                    body_       = {};
-                    messages_js = {};
-                }
-            }(res.reqwest().body());
+            json body_ = json_parse(res.reqwest().body());
+            if (body_.empty())
+            {
+                res.result() = http::status_code::bad_request;
+                res.end();
+                return;
+            }
+
+            json messages_js = json_value(body_, "messages", json());
+            if (messages_js.empty())
+            {
+                res.result() = http::status_code::bad_request;
+                res.end();
+                return;
+            }
 
             if (body_ == json() or messages_js == json())
             {
@@ -884,10 +931,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return;
             }
 
-            if (body_.contains("stream") and body_.at("stream").is_boolean() and body_["stream"].get<bool>() == true)
-            {
-                chat_type = CHAT_TYPE_STREAM;
-            }
+            chat_type = json_value(body_, "stream", bool(false)) == true ? CHAT_TYPE_STREAM : CHAT_TYPE_DEFAULT;
 
             if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
             {
@@ -929,7 +973,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 }
 
                 if (chat_type == CHAT_TYPE_DEFAULT)
-                {
+                { // default
                     std::string res_body;
                     auto get_text_hdl = [&](int rc, const std::string & text) -> int {
                         if (rc == 0)
@@ -942,25 +986,27 @@ void server_cmd_handler(std::filesystem::path model_path)
                     if (tokens.size() == 0)
                     {
                         res.result() = http::status_code::internal_error;
+                        res.set_content("tokenize is zero");
                         res.end();
                     }
                     else
                     {
 
                         chat_session_get(chat_session, tokens, get_text_hdl);
-
                         res.set_content(res_body);
                         res.end();
                     }
                 }
                 else
-                {
+                { // stream
+                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                     res.event_source_start();
                     auto get_text_hdl = [&](int rc, const std::string & text) -> int {
                         auto is_all_printable = [](const std::string & s) -> bool {
                             return !std::any_of(s.begin(), s.end(), [](unsigned char c) { return !std::isprint(c); });
                         };
 
+                        // TODO: why only pritable character
                         if (rc == 0 and is_all_printable(text))
                         {
                             res.chunk_write("data: " + oai_make_stream(text));
@@ -973,6 +1019,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     if (tokens.size() == 0)
                     {
                         res.result() = http::status_code::internal_error;
+                        res.set_content("tokenize is zero");
                         res.end();
                     }
                     else
@@ -987,8 +1034,120 @@ void server_cmd_handler(std::filesystem::path model_path)
             else
             {
                 res.result() = http::status_code::internal_error;
+                res.set_content("The chat type is not support");
                 res.end();
             }
+        };
+
+        static auto embedding_handler = [&](http::response res) -> void {
+            // sanity check
+            if (!model_embedding.has_value())
+            {
+                res.result() = http::status_code::internal_error;
+                res.set_content("do have the embedding model");
+                res.end();
+                return;
+            }
+            llama_model * model = model_embedding.value();
+
+            json body_js = json_parse(res.reqwest().body());
+
+            if (body_js.empty())
+            {
+                res.result() = http::status_code::internal_error;
+                res.set_content("the content is not valid");
+                res.end();
+                return;
+            }
+
+            // fix: the sentence-level embedding
+            // context
+            llama_context * ctx = [&]() {
+                llama_context_params cparams = common_context_params_to_llama(cparams_emb);
+                return llama_init_from_model(model, cparams);
+            }();
+            GGML_ASSERT(nullptr != ctx && "Can not initilize the context");
+            if (nullptr == ctx)
+            {
+                res.result() = http::status_code::internal_error;
+                res.end();
+                return;
+            }
+
+#if 0
+            {
+                model : "text-embedding-3-small",
+                input : "Your text string goes here",
+                encoding_format : "float",
+            }
+#endif
+            std::string input = json_value(body_js, "input", std::string());
+            if (input == "")
+            {
+                res.result() = http::status_code::internal_error;
+                //                                     res.set_content(std::string(R(""));
+                res.end();
+                return;
+            }
+            // tokenize the prompt
+            auto tokens = [&model, &data = input]() -> std::vector<llama_token> {
+                const llama_vocab * const vocab = llama_model_get_vocab(model);
+                if (nullptr == vocab)
+                    return {};
+                int n_token = -llama_tokenize(vocab, data.data(), data.size(), NULL, 0, true, true);
+                std::vector<llama_token> tokens(n_token);
+                if (llama_tokenize(vocab, data.data(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
+                    return {};
+                return tokens;
+            }();
+            if (tokens.size() == 0)
+            {
+                res.result() = http::status_code::internal_error;
+                res.end();
+                return;
+            }
+
+            if (!silent)
+            {
+                const llama_vocab * const vocab = llama_model_get_vocab(model);
+                llama_token_print(vocab, tokens);
+            }
+
+            const uint64_t n_batch = cparams_emb.n_batch;
+            llama_batch batch      = llama_batch_init(n_batch, 0, 1);
+
+            for (int pos = 0; pos < tokens.size(); pos++)
+                common_batch_add(batch, tokens[pos], pos, { 0 }, true);
+
+            if (!silent)
+                llama_batch_print(&batch);
+
+            if (llama_decode(ctx, batch) < 0)
+            {
+                res.result() = http::status_code::internal_error;
+                res.end();
+                return;
+            }
+
+            int n_embd = llama_model_n_embd(model);
+            std::vector<float> embeddings(n_embd);
+
+            float * embd                         = llama_get_embeddings_seq(ctx, 0);
+            float * const out                    = embeddings.data();
+            enum llama_pooling_type pooling_type = llama_pooling_type(ctx);
+            common_embd_normalize(embd, out, n_embd, cparams_emb.embd_normalize);
+            if (!silent)
+            {
+                for (int i = 0; i < std::min(3, n_embd); i++)
+                    printf("%.6f ", *(embeddings.data() + i));
+                printf("...");
+
+                for (int i = 0; i < n_embd && i < 2; i++)
+                    printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
+            }
+            json j = embeddings;
+            res.set_content(j.dump(4));
+            res.end();
         };
 
         // completion (it is only support stream, and non-stream)
@@ -1000,13 +1159,18 @@ void server_cmd_handler(std::filesystem::path model_path)
                     [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
         route_.post("/v1/chat/completions",
                     [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+
+        route_.post("/embeddings", [](http::response res) { embedding_handler(std::move(res)); });
+        route_.post("/v1/embeddings", [](http::response res) { embedding_handler(std::move(res)); });
     }
 
     // infill, fim
     {
-        static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &vocab, &ctx_params](http::response res) -> void {
+        static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
+                                   &ctx_params](http::response res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
-            bool silent = true;
+            bool silent               = true;
+            const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
             if (!silent)
                 AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
 
@@ -1239,11 +1403,5 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     http::start_server(xoptions_.port, route_);
 
-    llama_model_free(model);
+    // llama_model_free(model);
 };
-
-// llama server command handler
-static void llama_srv_cmd_handler(int argc, char * argv[])
-{
-    llama_server_main(argc, argv);
-}

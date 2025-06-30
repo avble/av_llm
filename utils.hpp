@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,26 @@ static void llama_token_print(const llama_vocab * vocab, llama_tokens & tokens)
     }
     std::cout << std::endl;
 }
+
+static void llama_batch_print(const llama_batch * batch)
+{
+    printf("%s\n", std::string(20, '-').c_str());
+    printf("%30s: %-10d\n", "n_tokens", batch->n_tokens);
+
+    printf("tokens|emb:\n");
+    for (int i = 0; i < batch->n_tokens && batch->token; i++)
+        printf("%8d,", batch->token[i]);
+    for (int i = 0; i < batch->n_tokens && batch->embd; i++)
+        printf("%8f,", batch->embd[i]);
+    printf("\npos: \n");
+    for (int i = 0; i < batch->n_tokens && batch->pos; i++)
+        printf("%8d,", batch->pos[i]);
+    printf("\nn_seq\n");
+    for (int i = 0; i < batch->n_tokens && batch->seq_id[i]; i++)
+        printf("%8d,", batch->seq_id[i][0]);
+
+    printf("\n");
+};
 
 // libcurl helper
 extern std::filesystem::path app_data_path;
@@ -329,6 +350,20 @@ static T json_value(const json & body, const std::string & key, const T & defaul
     {
         return default_value;
     }
+}
+
+template <typename T>
+static json json_parse(const T & data)
+{
+    try
+    {
+        json j = json::parse(data);
+        return j;
+    } catch (const json::exception &)
+    {
+        AVLLM_LOG_WARN("Parsing the json wrong");
+    }
+    return json();
 }
 
 // borrow this from llama.cpp prorject
