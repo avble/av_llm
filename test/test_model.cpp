@@ -1,6 +1,6 @@
 #include "catch2/catch.hpp"
 
-#include "../model.hpp"
+#include "../src/model.hpp"
 
 #include <iomanip>
 #include <iostream>

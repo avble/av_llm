@@ -300,7 +300,7 @@ int main(int argc, char ** argv)
 
         if (body_ == json() or messages_js == json())
         {
-            res.result() = http::status_code::internal_error;
+            res.result() = http::status_code::internal_server_error;
             res.end();
             return;
         }
@@ -327,7 +327,7 @@ int main(int argc, char ** argv)
             } catch (const std::exception & e)
             {
                 AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
-                res.result() = http::status_code::internal_error;
+                res.result() = http::status_code::internal_server_error;
                 res.end();
                 return;
             }

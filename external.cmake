@@ -145,7 +145,7 @@ endif()
 FetchContent_Declare(
 	av_connect
 	GIT_REPOSITORY https://github.com/avble/av_connect.git
-	GIT_TAG        dev-01
+	GIT_TAG       dev-01 
 )
 
 FetchContent_GetProperties(av_connect)

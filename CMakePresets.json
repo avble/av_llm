@@ -84,6 +84,8 @@
 		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama", "debug" ] },
 		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama", "reldbg" ] },
 
+		{ "name": "x64-windows-vs-release", "inherits": [ "base-vs", "llama", "reldbg" ] },
+
 		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama", "debug"] },
 		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama", "release"] },
 
