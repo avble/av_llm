@@ -15,10 +15,10 @@ It can be used, modified.
 #include "av_connect.hpp"
 #include "helper.hpp"
 #include "model.hpp"
+#include <memory>
 namespace av_llm {
 #include "index.html.gz.hpp"
 }
-#include "src/llama_helper.hpp"
 
 #include "utils.hpp"
 
@@ -28,6 +28,7 @@ namespace av_llm {
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <mutex>
 #include <numeric>
 #include <optional>
@@ -51,39 +52,6 @@ namespace av_llm {
 #include <ciso646>
 #endif
 
-// type definition
-struct xoptions
-{
-    xoptions()
-    {
-        repeat_penalty = 1.0;
-
-        n_ctx   = 512;
-        n_batch = 1024;
-        ngl     = 0;
-
-        port = 8080;
-    }
-
-    // sampling
-    double repeat_penalty;
-
-    // decoding
-    int n_ctx;
-    int n_batch;
-    int ngl;
-
-    // server
-    int port;
-
-    // others
-    std::string model_url_or_alias;
-    std::string model_path_emb;
-
-    // llama-server
-    std::string llama_srv_args;
-};
-
 // prototype
 static void model_cmd_handler(std::string sub_cmd);
 static void server_cmd_handler(std::filesystem::path model_path);
@@ -95,6 +63,24 @@ static xoptions xoptions_;
 std::filesystem::path home_path;
 std::filesystem::path app_data_path;
 common_params cparams_emb;
+
+// Update macro names for clarity
+#define HTTP_SEND_RES_AND_RETURN(res, status, message)                                                                             \
+    do                                                                                                                             \
+    {                                                                                                                              \
+        res.result() = status;                                                                                                     \
+        res.set_content(message);                                                                                                  \
+        res.end();                                                                                                                 \
+        return;                                                                                                                    \
+    } while (0)
+
+#define HTTP_SEND_RES_AND_CONTINUE(res, status, message)                                                                           \
+    do                                                                                                                             \
+    {                                                                                                                              \
+        res.result() = status;                                                                                                     \
+        res.set_content(message);                                                                                                  \
+        res.end();                                                                                                                 \
+    } while (0)
 
 int main(int argc, char ** argv)
 {
@@ -366,57 +352,57 @@ static void chat_cmd_handler(std::filesystem::path model_path)
     ggml_backend_load_all();
 
     // model initialized
-    llama_model * model = [&model_path]() -> llama_model * {
+    llama_model_ptr model = [&model_path]() -> llama_model_ptr {
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers       = xoptions_.ngl;
-        return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
+        return llama_model_ptr(llama_model_load_from_file(model_path.generic_string().c_str(), model_params));
     }();
-    if (model == nullptr)
+    if (!model)
     {
         AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
         return;
     }
 
     // context initialize
-    llama_context * ctx = [&model]() -> llama_context * {
+    llama_context_ptr ctx = [&model]() -> llama_context_ptr {
         llama_context_params ctx_params = llama_context_default_params();
         ctx_params.no_perf              = false;
         ctx_params.n_ctx                = xoptions_.n_ctx;
         ctx_params.n_batch              = xoptions_.n_batch;
-        return llama_init_from_model(model, ctx_params);
+        return llama_context_ptr(llama_init_from_model(model.get(), ctx_params));
     }();
-    if (ctx == nullptr)
+    if (!ctx)
     {
         AVLLM_LOG_ERROR("%s: error: failed to create the llama_context\n", __func__);
         return;
     }
 
     // initialize the sampler
-    llama_sampler * smpl = []() {
+    llama_sampler_ptr smpl = []() {
         auto sparams    = llama_sampler_chain_default_params();
         sparams.no_perf = false;
         auto smpl       = llama_sampler_chain_init(sparams);
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
-        return smpl;
+        return llama_sampler_ptr(smpl);
     }();
-    if (smpl == nullptr)
+    if (!smpl)
     {
         AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
         return;
     }
     if (!silent)
     {
-        llama_sampler_print(smpl);
+        llama_sampler_print(smpl.get());
     }
 
-    const char * chat_tmpl = llama_model_chat_template(model, /* name */ nullptr);
+    const char * chat_tmpl = llama_model_chat_template(model.get(), /* name */ nullptr);
     if (chat_tmpl == nullptr)
     {
         AVLLM_LOG_ERROR("%s: error: could no accept the template is null\n", __func__);
         return;
     }
     std::vector<llama_chat_message> chat_messages;
-    std::vector<char> chat_message_output(llama_n_ctx(ctx));
+    std::vector<char> chat_message_output(llama_n_ctx(ctx.get()));
     int chat_message_start = 0;
     int chat_message_end   = 0;
 
@@ -457,10 +443,10 @@ static void chat_cmd_handler(std::filesystem::path model_path)
         chat_message_start = chat_message_end;
 
         llama_token new_token;
-        const llama_vocab * vocab = llama_model_get_vocab(model);
+        const llama_vocab * vocab = llama_model_get_vocab(model.get());
         // const llama_vocab * vocab = llama_model_get_vocab(model);
 
-        bool is_first       = llama_kv_self_used_cells(ctx) == 0;
+        bool is_first       = llama_kv_self_used_cells(ctx.get()) == 0;
         int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
 
@@ -494,8 +480,8 @@ static void chat_cmd_handler(std::filesystem::path model_path)
 
         while (true)
         {
-            int n_ctx      = llama_n_ctx(ctx);
-            int n_ctx_used = llama_kv_self_used_cells(ctx);
+            int n_ctx      = llama_n_ctx(ctx.get());
+            int n_ctx_used = llama_kv_self_used_cells(ctx.get());
 
             if (n_ctx_used + batch.n_tokens > n_ctx)
             {
@@ -503,13 +489,13 @@ static void chat_cmd_handler(std::filesystem::path model_path)
                 return;
             }
 
-            if (llama_decode(ctx, batch))
+            if (llama_decode(ctx.get(), batch))
             {
                 AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
                 return;
             }
 
-            new_token = llama_sampler_sample(smpl, ctx, -1);
+            new_token = llama_sampler_sample(smpl.get(), ctx.get(), -1);
             if (llama_vocab_is_eog(vocab, new_token))
             {
                 break;
@@ -531,44 +517,72 @@ static void chat_cmd_handler(std::filesystem::path model_path)
 
     if (false)
     {
-        llama_perf_sampler_print(smpl);
-        llama_perf_context_print(ctx);
+        llama_perf_sampler_print(smpl.get());
+        llama_perf_context_print(ctx.get());
     }
 
-    llama_sampler_free(smpl);
-    llama_free(ctx);
-    llama_model_free(model);
 }; // end of chat handler
+
+// Add this struct near the top, after includes and before usage
+class chat_session_t : public http::base_data
+{
+
+public:
+    chat_session_t(const chat_session_t &) = delete;
+    chat_session_t(llama_context_ptr && _ctx) : http::base_data(), ctx(std::move(_ctx))
+    {
+        chat_message_start = 0;
+        chat_message_end   = 0;
+        chat_message_output.resize(llama_n_ctx(ctx.get()));
+    }
+
+    ~chat_session_t()
+    {
+        AVLLM_LOG_TRACE_SCOPE("~chat_session_t");
+        if (ctx)
+        {
+            AVLLM_LOG_DEBUG("%s\n", "~chat_seesion_t is ended.");
+        }
+    }
+
+public:
+    llama_context_ptr ctx;
+    std::vector<char> chat_message_output;
+    int chat_message_start;
+    int chat_message_end;
+
+    const bool add_generation_prompt = true;
+};
 
 void server_cmd_handler(std::filesystem::path model_path)
 {
 
     bool silent = false;
-    std::optional<llama_model *> model_general;
+    llama_model_ptr model_general;
     common_chat_templates_ptr chat_templates;
     llama_sampler_ptr smpl_ptr;
 
-    std::optional<llama_model *> model_embedding;
+    llama_model_ptr model_embedding;
 
     ggml_backend_load_all();
 
     if (xoptions_.model_url_or_alias != "")
     {
-        llama_model * model = [&model_path]() -> llama_model * {
+        llama_model_ptr model = [&model_path]() -> llama_model_ptr {
             llama_model_params model_params = llama_model_default_params();
             model_params.n_gpu_layers       = xoptions_.ngl;
-            return llama_model_load_from_file(model_path.generic_string().c_str(), model_params);
+            return llama_model_ptr(llama_model_load_from_file(model_path.generic_string().c_str(), model_params));
         }();
-        if (model == nullptr)
+        if (!model)
         {
             AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
         }
         else
-            model_general = model;
+            model_general = std::move(model);
 
         // chat template
         chat_templates = [&]() {
-            llama_model * model = model_general.value();
+            llama_model * model = model_general.get();
             auto chat_templates = common_chat_templates_init(model, "");
             try
             {
@@ -614,55 +628,25 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     llama_context_params ctx_params = llama_context_default_params();
 
-    auto me_llama_context_init = [&model_general, &ctx_params]() -> llama_context * {
-        llama_model * model = model_general.value();
+    auto me_llama_context_init = [&model_general, &ctx_params]() -> llama_context_ptr {
+        llama_model * model = model_general.get();
         ctx_params.no_perf  = false;
         ctx_params.n_ctx    = xoptions_.n_ctx;
         ctx_params.n_batch  = xoptions_.n_batch;
-        return llama_init_from_model(model, ctx_params);
-    };
-
-    struct chat_session_t
-    {
-        llama_context * ctx;
-        std::vector<char> chat_message_output;
-        int chat_message_start;
-        int chat_message_end;
-
-        const bool add_generation_prompt = true;
-
-        chat_session_t(llama_context * _ctx)
-        {
-            chat_message_start = 0;
-            chat_message_end   = 0;
-            ctx                = _ctx;
-            chat_message_output.resize(llama_n_ctx(ctx));
-            // chat_tmpl = llama_model_chat_template(model, /* name */ nullptr);
-        }
-
-        ~chat_session_t()
-        {
-            AVLLM_LOG_TRACE_SCOPE("~chat_session_t");
-            if (ctx != nullptr)
-            {
-                llama_free(ctx);
-                AVLLM_LOG_DEBUG("%s\n", "~chat_seesion_t is ended.");
-            }
-            ctx = nullptr;
-        }
+        return llama_context_ptr(llama_init_from_model(model, ctx_params));
     };
 
     auto chat_session_get_n = [&](llama_sampler * smpl, chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
                                   std::function<int(int, std::string)> func_) -> int {
         llama_token new_token;
-        const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
 
         llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
 
         while (true)
         {
-            int n_ctx      = llama_n_ctx(chat.ctx);
-            int n_ctx_used = llama_kv_self_used_cells(chat.ctx);
+            int n_ctx      = llama_n_ctx(chat.ctx.get());
+            int n_ctx_used = llama_kv_self_used_cells(chat.ctx.get());
 
             if (n_ctx_used + batch.n_tokens > n_ctx)
             {
@@ -671,14 +655,14 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return -1;
             }
 
-            if (llama_decode(chat.ctx, batch))
+            if (llama_decode(chat.ctx.get(), batch))
             {
                 AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
                 func_(-1, "");
                 return -1;
             }
 
-            new_token = llama_sampler_sample(smpl, chat.ctx, -1);
+            new_token = llama_sampler_sample(smpl, chat.ctx.get(), -1);
             if (llama_vocab_is_eog(vocab, new_token))
             {
                 break;
@@ -713,7 +697,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     auto chat_session_get = [&](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
                                 std::function<int(int, std::string)> func_) -> int {
-        const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
 
         return chat_session_get_n(smpl_ptr.get(), chat, prompt_tokens, func_);
     };
@@ -721,7 +705,7 @@ void server_cmd_handler(std::filesystem::path model_path)
     auto chat_template_to_tokens =
         [&chat_templates, &model_general](chat_session_t & chat,
                                           const std::vector<llama_chat_message> & chat_messages) -> std::vector<llama_token> {
-        llama_model * model       = model_general.value();
+        llama_model * model       = model_general.get();
         const llama_vocab * vocab = llama_model_get_vocab(model);
 
         { // get input string and apply template
@@ -775,17 +759,17 @@ void server_cmd_handler(std::filesystem::path model_path)
             cparams_emb.n_ubatch     = cparams_emb.n_batch;
             cparams_emb.n_gpu_layers = xoptions_.ngl;
             // cparams_emb.
-            llama_model * model = []() {
+            llama_model_ptr model = []() {
                 llama_model_params mparams = common_model_params_to_llama(cparams_emb);
-                return llama_load_model_from_file(xoptions_.model_path_emb.c_str(), mparams);
+                return llama_model_ptr(llama_load_model_from_file(xoptions_.model_path_emb.c_str(), mparams));
             }();
-            GGML_ASSERT(nullptr != model && "Can not initialize model");
-            if (model == nullptr)
+            GGML_ASSERT(model && "Can not initialize model");
+            if (!model)
             {
                 AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
             }
             else
-                model_embedding = model;
+                model_embedding = std::move(model);
         }
     }
 
@@ -805,9 +789,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 AVLLM_LOG_TRACE_SCOPE("handle_static_file")
                 if (not std::filesystem::exists(std::filesystem::path(file_path)))
                 {
-                    res.result() = http::status_code::not_found;
-                    res.end();
-                    return;
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::not_found, "File not found");
                 }
 
                 res.set_header("Content-Type", content_type);
@@ -910,52 +892,44 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             json body_ = json_parse(res.reqwest().body());
             if (body_.empty())
-            {
-                res.result() = http::status_code::bad_request;
-                res.end();
-                return;
-            }
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Empty request body");
 
             json messages_js = json_value(body_, "messages", json());
             if (messages_js.empty())
-            {
-                res.result() = http::status_code::bad_request;
-                res.end();
-                return;
-            }
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Missing or empty messages");
 
             if (body_ == json() or messages_js == json())
             {
-                res.result() = http::status_code::internal_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON format");
             }
 
             chat_type = json_value(body_, "stream", bool(false)) == true ? CHAT_TYPE_STREAM : CHAT_TYPE_DEFAULT;
 
             if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
             {
+                // printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                 try
                 {
-                    if (not res.get_data().has_value())
+                    if (!res.get_data())
                     {
                         AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
                                        res.session_id());
-                        llama_context * p = me_llama_context_init();
-                        if (p != nullptr)
-                            res.get_data().emplace<chat_session_t>(p);
+                        llama_context_ptr p = me_llama_context_init();
+                        if (p)
+                        {
+                            res.get_data() = std::make_unique<chat_session_t>(std::move(p));
+                        }
                         else
                             throw std::runtime_error("can not initalize context");
                     }
                 } catch (const std::exception & e)
                 {
                     AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
-                    res.result() = http::status_code::internal_error;
-                    res.end();
-                    return;
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
                 }
 
-                chat_session_t & chat_session = std::any_cast<chat_session_t &>(res.get_data());
+                chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_data().get());
+                GGML_ASSERT(nullptr != chat_session);
 
                 std::vector<llama_chat_message> chat_messages;
                 std::string prompt;
@@ -982,24 +956,19 @@ void server_cmd_handler(std::filesystem::path model_path)
                         return 0;
                     };
 
-                    auto tokens = chat_template_to_tokens(chat_session, chat_messages);
+                    auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
                     if (tokens.size() == 0)
                     {
-                        res.result() = http::status_code::internal_error;
-                        res.set_content("tokenize is zero");
-                        res.end();
+                        HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                                 "Tokenization failed - no tokens generated");
                     }
-                    else
-                    {
 
-                        chat_session_get(chat_session, tokens, get_text_hdl);
-                        res.set_content(res_body);
-                        res.end();
-                    }
+                    chat_session_get(*chat_session, tokens, get_text_hdl);
+                    res.set_content(res_body);
+                    res.end();
                 }
                 else
                 { // stream
-                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                     res.event_source_start();
                     auto get_text_hdl = [&](int rc, const std::string & text) -> int {
                         auto is_all_printable = [](const std::string & s) -> bool {
@@ -1015,85 +984,62 @@ void server_cmd_handler(std::filesystem::path model_path)
                         return 0;
                     };
 
-                    auto tokens = chat_template_to_tokens(chat_session, chat_messages);
+                    auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
                     if (tokens.size() == 0)
                     {
-                        res.result() = http::status_code::internal_error;
-                        res.set_content("tokenize is zero");
-                        res.end();
+                        HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                                 "Tokenization failed - no tokens generated");
                     }
-                    else
-                    {
-                        chat_session_get(chat_session, tokens, get_text_hdl);
 
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        res.chunk_end();
-                    }
+                    chat_session_get(*chat_session, tokens, get_text_hdl);
+
+                    // TODO: why need to sleep?
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    res.chunk_end();
                 }
             }
             else
             {
-                res.result() = http::status_code::internal_error;
-                res.set_content("The chat type is not support");
-                res.end();
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Unsupported chat type");
             }
         };
 
         static auto embedding_handler = [&](http::response res) -> void {
             // sanity check
-            if (!model_embedding.has_value())
+            if (!model_embedding)
             {
-                res.result() = http::status_code::internal_error;
-                res.set_content("do have the embedding model");
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Embedding model not available");
             }
-            llama_model * model = model_embedding.value();
+            llama_model * model = model_embedding.get();
 
             json body_js = json_parse(res.reqwest().body());
 
             if (body_js.empty())
             {
-                res.result() = http::status_code::internal_error;
-                res.set_content("the content is not valid");
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid request content");
             }
 
             // fix: the sentence-level embedding
             // context
-            llama_context * ctx = [&]() {
+            llama_context_ptr ctx = [&]() {
                 llama_context_params cparams = common_context_params_to_llama(cparams_emb);
-                return llama_init_from_model(model, cparams);
+                return llama_context_ptr(llama_init_from_model(model, cparams));
             }();
-            GGML_ASSERT(nullptr != ctx && "Can not initilize the context");
-            if (nullptr == ctx)
+            GGML_ASSERT(ctx && "Can not initilize the context");
+            if (!ctx)
             {
-                res.result() = http::status_code::internal_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize embedding context");
             }
 
-#if 0
-            {
-                model : "text-embedding-3-small",
-                input : "Your text string goes here",
-                encoding_format : "float",
-            }
-#endif
             std::string input = json_value(body_js, "input", std::string());
             if (input == "")
             {
-                res.result() = http::status_code::internal_error;
-                //                                     res.set_content(std::string(R(""));
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Empty input text");
             }
             // tokenize the prompt
             auto tokens = [&model, &data = input]() -> std::vector<llama_token> {
                 const llama_vocab * const vocab = llama_model_get_vocab(model);
-                if (nullptr == vocab)
-                    return {};
+                GGML_ASSERT(vocab != nullptr);
                 int n_token = -llama_tokenize(vocab, data.data(), data.size(), NULL, 0, true, true);
                 std::vector<llama_token> tokens(n_token);
                 if (llama_tokenize(vocab, data.data(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
@@ -1101,11 +1047,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return tokens;
             }();
             if (tokens.size() == 0)
-            {
-                res.result() = http::status_code::internal_error;
-                res.end();
-                return;
-            }
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to tokenize input");
 
             if (!silent)
             {
@@ -1122,19 +1064,17 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (!silent)
                 llama_batch_print(&batch);
 
-            if (llama_decode(ctx, batch) < 0)
+            if (llama_decode(ctx.get(), batch) < 0)
             {
-                res.result() = http::status_code::internal_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to decode embedding batch");
             }
 
             int n_embd = llama_model_n_embd(model);
             std::vector<float> embeddings(n_embd);
 
-            float * embd                         = llama_get_embeddings_seq(ctx, 0);
+            float * embd                         = llama_get_embeddings_seq(ctx.get(), 0);
             float * const out                    = embeddings.data();
-            enum llama_pooling_type pooling_type = llama_pooling_type(ctx);
+            enum llama_pooling_type pooling_type = llama_pooling_type(ctx.get());
             common_embd_normalize(embd, out, n_embd, cparams_emb.embd_normalize);
             if (!silent)
             {
@@ -1170,7 +1110,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                                    &ctx_params](http::response res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
             bool silent               = true;
-            const llama_vocab * vocab = llama_model_get_vocab(model_general.value());
+            const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
             if (!silent)
                 AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
 
@@ -1193,10 +1133,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (not is_err.empty())
             {
                 AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
-                res.result() = http::status_code::internal_error;
-                res.set_content("\"input_prefix\" is required");
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
             }
 
             // printf("[DEBUG]: %s:%d \n", __func__, __LINE__);
@@ -1213,7 +1150,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             if (body_js == json())
             { // not valid body_js
-                res.result() = http::status_code::internal_error;
+                res.result() = http::status_code::internal_server_error;
                 res.end();
                 return;
             }
@@ -1237,10 +1174,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (!is_err.empty())
             {
                 AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
-                res.result() = http::status_code::internal_error;
-                res.set_content(is_err);
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
             }
 
             json input_extra = json_value(body_js, "input_extra", json::array());
@@ -1293,28 +1227,28 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             try
             {
-                if (not res.get_data().has_value())
+                if (!res.get_data())
                 {
                     AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res.session_id());
-                    llama_context * p = me_llama_context_init();
-                    if (p != nullptr)
-                        res.get_data().emplace<chat_session_t>(p);
+                    llama_context_ptr p = me_llama_context_init();
+                    if (p)
+                        res.get_data().reset(new chat_session_t(std::move(p)));
                     else
                         throw std::runtime_error("can not initalize context");
                 }
             } catch (const std::exception & e)
             {
                 AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
-                res.result() = http::status_code::internal_error;
+                res.result() = http::status_code::internal_server_error;
                 res.end();
                 return;
             }
 
-            chat_session_t & chat_session = std::any_cast<chat_session_t &>(res.get_data());
+            chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_data().get());
 
             if (tokens.size() == 0)
             {
-                res.result() = http::status_code::internal_error;
+                res.result() = http::status_code::internal_server_error;
                 res.end();
                 return;
             }
@@ -1332,29 +1266,29 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             // sampler
             // initialize the sampler
-            llama_sampler * smpl_ = [&vocab, &top_k, &top_p, &seed]() {
+            llama_sampler_ptr smpl_ = [&vocab, &top_k, &top_p, &seed]() {
                 auto sparams    = llama_sampler_chain_default_params();
                 sparams.no_perf = false;
                 auto smpl       = llama_sampler_chain_init(sparams);
                 llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
                 llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 20));
                 llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
-                return smpl;
+                return llama_sampler_ptr(smpl);
             }();
-            if (smpl_ == nullptr)
+            if (!smpl_)
             {
                 AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-                res.result() = http::status_code::bad_request;
+                res.result() = http::status_code::internal_server_error;
                 res.end();
                 return;
             }
             if (!silent)
             {
-                llama_sampler_print(smpl_);
+                llama_sampler_print(smpl_.get());
             }
 
             {
-                chat_session_get_n(smpl_, chat_session, tokens, get_text_hdl);
+                chat_session_get_n(smpl_.get(), *chat_session, tokens, get_text_hdl);
                 json body_js;
                 body_js["content"] = res_body;
                 res.set_content(body_js.dump());

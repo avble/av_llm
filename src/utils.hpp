@@ -23,9 +23,106 @@
 using json = nlohmann::ordered_json;
 #define MIMETYPE_JSON "application/json; charset=utf-8"
 
-// llama's helper function
+// xoptions struct moved here for coding convention
+struct xoptions
+{
+    xoptions()
+    {
+        repeat_penalty = 1.0;
+        n_ctx   = 512;
+        n_batch = 1024;
+        ngl     = 0;
+        port = 8080;
+    }
+    // sampling
+    double repeat_penalty;
+    // decoding
+    int n_ctx;
+    int n_batch;
+    int ngl;
+    // server
+    int port;
+    // others
+    std::string model_url_or_alias;
+    std::string model_path_emb;
+    // llama-server
+    std::string llama_srv_args;
+};
 
-// sampling
+// json
+static bool json_is_array_of_numbers(const json & data)
+{
+    if (data.is_array())
+    {
+        for (const auto & e : data)
+        {
+            if (!e.is_number_integer())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+// is array having BOTH numbers & strings?
+static bool json_is_array_of_mixed_numbers_strings(const json & data)
+{
+    bool seen_string = false;
+    bool seen_number = false;
+    if (data.is_array())
+    {
+        for (const auto & e : data)
+        {
+            seen_string |= e.is_string();
+            seen_number |= e.is_number_integer();
+            if (seen_number && seen_string)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+template <typename T>
+static T json_value(const json & body, const std::string & key, const T & default_value)
+{
+    // Fallback null to default value
+    if (body.contains(key) && !body.at(key).is_null())
+    {
+        try
+        {
+            return body.at(key);
+        } catch (NLOHMANN_JSON_NAMESPACE::detail::type_error const &)
+        {
+            AVLLM_LOG_WARN("Wrong type supplied for parameter '%s'. Expected '%s', using default value\n", key.c_str(),
+                           json(default_value).type_name());
+            return default_value;
+        }
+    }
+    else
+    {
+        return default_value;
+    }
+}
+
+template <typename T>
+static json json_parse(const T & data)
+{
+    try
+    {
+        json j = json::parse(data);
+        return j;
+    } catch (const json::exception &)
+    {
+        AVLLM_LOG_WARN("Parsing the json wrong");
+    }
+    return json();
+}
+
+// llama
 static void llama_sampler_print(const llama_sampler * smpl)
 {
     int n_samplers = llama_sampler_chain_n(smpl);
@@ -75,7 +172,6 @@ static void llama_batch_print(const llama_batch * batch)
 
 // libcurl helper
 extern std::filesystem::path app_data_path;
-
 // curl helper function
 static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
 {
@@ -178,44 +274,6 @@ struct human_readable
         return i ? os << "B (" << hr.size << ')' : os;
     }
 };
-
-// From llama.cpp
-// from here
-static bool json_is_array_of_numbers(const json & data)
-{
-    if (data.is_array())
-    {
-        for (const auto & e : data)
-        {
-            if (!e.is_number_integer())
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-    return false;
-}
-
-// is array having BOTH numbers & strings?
-static bool json_is_array_of_mixed_numbers_strings(const json & data)
-{
-    bool seen_string = false;
-    bool seen_number = false;
-    if (data.is_array())
-    {
-        for (const auto & e : data)
-        {
-            seen_string |= e.is_string();
-            seen_number |= e.is_number_integer();
-            if (seen_number && seen_string)
-            {
-                return true;
-            }
-        }
-    }
-    return false;
-}
 
 /**
  * this handles 2 cases:
@@ -330,43 +388,6 @@ static std::vector<llama_tokens> tokenize_input_prompts(const llama_vocab * voca
     return result;
 }
 
-template <typename T>
-static T json_value(const json & body, const std::string & key, const T & default_value)
-{
-    // Fallback null to default value
-    if (body.contains(key) && !body.at(key).is_null())
-    {
-        try
-        {
-            return body.at(key);
-        } catch (NLOHMANN_JSON_NAMESPACE::detail::type_error const &)
-        {
-            AVLLM_LOG_WARN("Wrong type supplied for parameter '%s'. Expected '%s', using default value\n", key.c_str(),
-                           json(default_value).type_name());
-            return default_value;
-        }
-    }
-    else
-    {
-        return default_value;
-    }
-}
-
-template <typename T>
-static json json_parse(const T & data)
-{
-    try
-    {
-        json j = json::parse(data);
-        return j;
-    } catch (const json::exception &)
-    {
-        AVLLM_LOG_WARN("Parsing the json wrong");
-    }
-    return json();
-}
-
-// borrow this from llama.cpp prorject
 static llama_tokens format_infill(const llama_vocab * vocab, const json & input_prefix, const json & input_suffix,
                                   const json & input_extra, const int n_batch, const int n_predict, const int n_ctx,
                                   const bool spm_infill, const llama_tokens & tokens_prompt)
@@ -482,5 +503,4 @@ static llama_tokens format_infill(const llama_vocab * vocab, const json & input_
 }
 // to here
 extern "C" int llama_server_main(int argc, char * argv[]);
-
 #endif
