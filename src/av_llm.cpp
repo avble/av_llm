@@ -910,14 +910,14 @@ void server_cmd_handler(std::filesystem::path model_path)
                 // printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                 try
                 {
-                    if (!res.get_data())
+                    if (!res.get_session_data())
                     {
                         AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
                                        res.session_id());
                         llama_context_ptr p = me_llama_context_init();
                         if (p)
                         {
-                            res.get_data() = std::make_unique<chat_session_t>(std::move(p));
+                            res.get_session_data() = std::make_unique<chat_session_t>(std::move(p));
                         }
                         else
                             throw std::runtime_error("can not initalize context");
@@ -928,7 +928,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
                 }
 
-                chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_data().get());
+                chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_session_data().get());
                 GGML_ASSERT(nullptr != chat_session);
 
                 std::vector<llama_chat_message> chat_messages;
@@ -1227,12 +1227,12 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             try
             {
-                if (!res.get_data())
+                if (!res.get_session_data())
                 {
                     AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res.session_id());
                     llama_context_ptr p = me_llama_context_init();
                     if (p)
-                        res.get_data().reset(new chat_session_t(std::move(p)));
+                        res.get_session_data().reset(new chat_session_t(std::move(p)));
                     else
                         throw std::runtime_error("can not initalize context");
                 }
@@ -1244,7 +1244,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return;
             }
 
-            chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_data().get());
+            chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_session_data().get());
 
             if (tokens.size() == 0)
             {
