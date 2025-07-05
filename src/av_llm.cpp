@@ -1150,9 +1150,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             if (body_js == json())
             { // not valid body_js
-                res.result() = http::status_code::internal_server_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON body");
             }
 
             is_err = [&body_js]() -> std::string {
@@ -1239,18 +1237,14 @@ void server_cmd_handler(std::filesystem::path model_path)
             } catch (const std::exception & e)
             {
                 AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
-                res.result() = http::status_code::internal_server_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
             }
 
             chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_session_data().get());
 
             if (tokens.size() == 0)
             {
-                res.result() = http::status_code::internal_server_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "No tokens generated");
             }
 
             std::string res_body;
@@ -1278,9 +1272,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (!smpl_)
             {
                 AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-                res.result() = http::status_code::internal_server_error;
-                res.end();
-                return;
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Could not create sampler");
             }
             if (!silent)
             {
