@@ -68,18 +68,18 @@ common_params cparams_emb;
 #define HTTP_SEND_RES_AND_RETURN(res, status, message)                                                                             \
     do                                                                                                                             \
     {                                                                                                                              \
-        res.result() = status;                                                                                                     \
-        res.set_content(message);                                                                                                  \
-        res.end();                                                                                                                 \
+        res->result() = status;                                                                                                    \
+        res->set_content(message);                                                                                                 \
+        res->end();                                                                                                                \
         return;                                                                                                                    \
     } while (0)
 
 #define HTTP_SEND_RES_AND_CONTINUE(res, status, message)                                                                           \
     do                                                                                                                             \
     {                                                                                                                              \
-        res.result() = status;                                                                                                     \
-        res.set_content(message);                                                                                                  \
-        res.end();                                                                                                                 \
+        res->result() = status;                                                                                                    \
+        res->set_content(message);                                                                                                 \
+        res->end();                                                                                                                \
     } while (0)
 
 int main(int argc, char ** argv)
@@ -784,7 +784,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 file_path    = _file_path;
                 content_type = _content_type;
             }
-            void operator()(http::response res)
+            void operator()(std::shared_ptr<http::response> res)
             {
                 AVLLM_LOG_TRACE_SCOPE("handle_static_file")
                 if (not std::filesystem::exists(std::filesystem::path(file_path)))
@@ -792,44 +792,44 @@ void server_cmd_handler(std::filesystem::path model_path)
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::not_found, "File not found");
                 }
 
-                res.set_header("Content-Type", content_type);
+                res->set_header("Content-Type", content_type);
 
                 std::ifstream infile(file_path);
                 std::stringstream str_stream;
                 str_stream << infile.rdbuf();
-                res.set_content(str_stream.str(), content_type);
-                res.end();
+                res->set_content(str_stream.str(), content_type);
+                res->end();
             }
 
             std::string file_path;
             std::string content_type;
         };
 
-        static auto preflight = [](http::response res) {
-            res.set_header("Access-Control-Allow-Origin", res.reqwest().get_header("origin"));
-            res.set_header("Access-Control-Allow-Credentials", "true");
-            res.set_header("Access-Control-Allow-Methods", "POST");
-            res.set_header("Access-Control-Allow-Headers", "*");
-            res.set_content("", "text/html");
-            res.end();
+        static auto preflight = [](std::shared_ptr<http::response> res) {
+            res->set_header("Access-Control-Allow-Origin", res->reqwest().get_header("origin"));
+            res->set_header("Access-Control-Allow-Credentials", "true");
+            res->set_header("Access-Control-Allow-Methods", "POST");
+            res->set_header("Access-Control-Allow-Headers", "*");
+            res->set_content("", "text/html");
+            res->end();
         };
 
-        static auto web_handler = [&](http::response res) -> void {
-            if (res.reqwest().get_header("accept-encoding").find("gzip") == std::string::npos)
+        static auto web_handler = [&](std::shared_ptr<http::response> res) -> void {
+            if (res->reqwest().get_header("accept-encoding").find("gzip") == std::string::npos)
             {
-                res.set_content("Error: gzip is not supported by this browser", "text/plain");
+                res->set_content("Error: gzip is not supported by this browser", "text/plain");
             }
             else
             {
-                res.set_header("Content-Encoding", "gzip");
+                res->set_header("Content-Encoding", "gzip");
                 // COEP and COOP headers, required by pyodide (python interpreter)
-                res.set_header("Cross-Origin-Embedder-Policy", "require-corp");
-                res.set_header("Cross-Origin-Opener-Policy", "same-origin");
-                res.set_content(reinterpret_cast<const char *>(av_llm::index_html_gz), av_llm::index_html_gz_len,
-                                "text/html; charset=utf-8");
-                // res.set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
+                res->set_header("Cross-Origin-Embedder-Policy", "require-corp");
+                res->set_header("Cross-Origin-Opener-Policy", "same-origin");
+                res->set_content(reinterpret_cast<const char *>(av_llm::index_html_gz), av_llm::index_html_gz_len,
+                                 "text/html; charset=utf-8");
+                // res->set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
             }
-            res.end();
+            res->end();
         };
 
         route_.set_option_handler(preflight);
@@ -838,7 +838,7 @@ void server_cmd_handler(std::filesystem::path model_path)
     }
 
     { // models
-        static auto handle_models = [&](http::response res) {
+        static auto handle_models = [&](std::shared_ptr<http::response> res) {
             AVLLM_LOG_TRACE_SCOPE("handle_models")
             json models = { { "object", "list" },
                             { "data",
@@ -850,11 +850,11 @@ void server_cmd_handler(std::filesystem::path model_path)
                                     { "meta", "meta" } },
                               } } };
 
-            res.set_content(models.dump(), MIMETYPE_JSON);
-            res.end();
+            res->set_content(models.dump(), MIMETYPE_JSON);
+            res->end();
         };
 
-        static auto handle_model = [&](http::response res) -> void {
+        static auto handle_model = [&](std::shared_ptr<http::response> res) -> void {
             AVLLM_LOG_TRACE_SCOPE("handle_model");
             json models = {
                 { "n_ctx", xoptions_.n_ctx },
@@ -866,8 +866,8 @@ void server_cmd_handler(std::filesystem::path model_path)
             };
 
             // nlohmman json dump with pretty
-            res.set_content(models.dump(4), MIMETYPE_JSON);
-            res.end();
+            res->set_content(models.dump(4), MIMETYPE_JSON);
+            res->end();
         };
 
         route_.get("/models", handle_models);
@@ -878,9 +878,9 @@ void server_cmd_handler(std::filesystem::path model_path)
     // OpenAI API (chat, embedding)
     {
 
-        static auto completions_chat_handler = [&](http::response res) -> void {
+        static auto completions_chat_handler = [&](std::shared_ptr<http::response> res) -> void {
             AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
-            AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_chat_handler", res.session_id());
+            AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_chat_handler", res->session_id());
 
             enum CHAT_TYPE
             {
@@ -890,7 +890,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             CHAT_TYPE chat_type = CHAT_TYPE_DEFAULT;
 
-            json body_ = json_parse(res.reqwest().body());
+            json body_ = json_parse(res->reqwest().body());
             if (body_.empty())
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Empty request body");
 
@@ -910,14 +910,14 @@ void server_cmd_handler(std::filesystem::path model_path)
                 // printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                 try
                 {
-                    if (!res.get_session_data())
+                    if (!res->get_session_data())
                     {
                         AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
-                                       res.session_id());
+                                       res->session_id());
                         llama_context_ptr p = me_llama_context_init();
                         if (p)
                         {
-                            res.get_session_data() = std::make_unique<chat_session_t>(std::move(p));
+                            res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
                         }
                         else
                             throw std::runtime_error("can not initalize context");
@@ -928,7 +928,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
                 }
 
-                chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_session_data().get());
+                chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
                 GGML_ASSERT(nullptr != chat_session);
 
                 std::vector<llama_chat_message> chat_messages;
@@ -964,12 +964,12 @@ void server_cmd_handler(std::filesystem::path model_path)
                     }
 
                     chat_session_get(*chat_session, tokens, get_text_hdl);
-                    res.set_content(res_body);
-                    res.end();
+                    res->set_content(res_body);
+                    res->end();
                 }
                 else
                 { // stream
-                    res.event_source_start();
+                    res->event_source_start();
                     auto get_text_hdl = [&](int rc, const std::string & text) -> int {
                         auto is_all_printable = [](const std::string & s) -> bool {
                             return !std::any_of(s.begin(), s.end(), [](unsigned char c) { return !std::isprint(c); });
@@ -978,7 +978,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                         // TODO: why only pritable character
                         if (rc == 0 and is_all_printable(text))
                         {
-                            res.chunk_write("data: " + oai_make_stream(text));
+                            res->chunk_write_async("data: " + oai_make_stream(text));
                         }
 
                         return 0;
@@ -994,8 +994,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     chat_session_get(*chat_session, tokens, get_text_hdl);
 
                     // TODO: why need to sleep?
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    res.chunk_end();
+                    res->chunk_end_async();
                 }
             }
             else
@@ -1004,7 +1003,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
         };
 
-        static auto embedding_handler = [&](http::response res) -> void {
+        static auto embedding_handler = [&](std::shared_ptr<http::response> res) -> void {
             // sanity check
             if (!model_embedding)
             {
@@ -1012,7 +1011,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
             llama_model * model = model_embedding.get();
 
-            json body_js = json_parse(res.reqwest().body());
+            json body_js = json_parse(res->reqwest().body());
 
             if (body_js.empty())
             {
@@ -1086,33 +1085,33 @@ void server_cmd_handler(std::filesystem::path model_path)
                     printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
             }
             json j = embeddings;
-            res.set_content(j.dump(4));
-            res.end();
+            res->set_content(j.dump(4));
+            res->end();
         };
 
         // completion (it is only support stream, and non-stream)
-        route_.post("/completions", [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+        route_.post("/completions",
+                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
         route_.post("/v1/completions",
-                    [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
-        // chat
+                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
         route_.post("/chat/completions",
-                    [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
         route_.post("/v1/chat/completions",
-                    [](http::response res) { std::thread{ completions_chat_handler, std::move(res) }.detach(); });
+                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
 
-        route_.post("/embeddings", [](http::response res) { embedding_handler(std::move(res)); });
-        route_.post("/v1/embeddings", [](http::response res) { embedding_handler(std::move(res)); });
+        route_.post("/embeddings", [](std::shared_ptr<http::response> res) { embedding_handler(res); });
+        route_.post("/v1/embeddings", [](std::shared_ptr<http::response> res) { embedding_handler(res); });
     }
 
     // infill, fim
     {
         static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
-                                   &ctx_params](http::response res) -> void {
+                                   &ctx_params](std::shared_ptr<http::response> res) -> void {
             AVLLM_LOG_TRACE_SCOPE("fim handler");
             bool silent               = true;
             const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
             if (!silent)
-                AVLLM_LOG_INFO("%s \n", res.reqwest().body().c_str());
+                AVLLM_LOG_INFO("%s \n", res->reqwest().body().c_str());
 
             // check model compatibility
             std::string is_err = [&vocab]() -> std::string {
@@ -1136,7 +1135,6 @@ void server_cmd_handler(std::filesystem::path model_path)
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
             }
 
-            // printf("[DEBUG]: %s:%d \n", __func__, __LINE__);
             json body_js;
             [&body_js](const std::string & body) mutable {
                 try
@@ -1146,7 +1144,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 {
                     body_js = {};
                 }
-            }(res.reqwest().body());
+            }(res->reqwest().body());
 
             if (body_js == json())
             { // not valid body_js
@@ -1201,7 +1199,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             if (input_prefix.empty())
             {
-                res.end();
+                res->end();
                 AVLLM_LOG_WARN("%s \n", "input_prefix is empty");
                 return;
             }
@@ -1225,12 +1223,12 @@ void server_cmd_handler(std::filesystem::path model_path)
 
             try
             {
-                if (!res.get_session_data())
+                if (!res->get_session_data())
                 {
-                    AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res.session_id());
+                    AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
                     llama_context_ptr p = me_llama_context_init();
                     if (p)
-                        res.get_session_data().reset(new chat_session_t(std::move(p)));
+                        res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
                     else
                         throw std::runtime_error("can not initalize context");
                 }
@@ -1240,7 +1238,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
             }
 
-            chat_session_t * chat_session = static_cast<chat_session_t *>(res.get_session_data().get());
+            chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
 
             if (tokens.size() == 0)
             {
@@ -1283,26 +1281,80 @@ void server_cmd_handler(std::filesystem::path model_path)
                 chat_session_get_n(smpl_.get(), *chat_session, tokens, get_text_hdl);
                 json body_js;
                 body_js["content"] = res_body;
-                res.set_content(body_js.dump());
-                res.end();
+                res->set_content(body_js.dump());
+                res->end();
                 return;
             }
         };
 
-        route_.post("/fim", [](http::response res) { std::thread{ fim_handler, std::move(res) }.detach(); });
-        route_.post("/infill", [](http::response res) { std::thread{ fim_handler, std::move(res) }.detach(); });
+        route_.post("/fim", [](std::shared_ptr<http::response> res) { std::thread{ fim_handler, res }.detach(); });
+        route_.post("/infill", [](std::shared_ptr<http::response> res) { std::thread{ fim_handler, res }.detach(); });
     }
+
+    // Example of how to use the new async chunking API for streaming responses
+    {
+        static auto streaming_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
+                                         &ctx_params](std::shared_ptr<http::response> res) -> void {
+            AVLLM_LOG_TRACE_SCOPE("streaming handler");
+
+            // Set up streaming response headers
+            res->set_header("Content-Type", "text/event-stream");
+            res->set_header("Cache-Control", "no-cache");
+            res->set_header("Connection", "keep-alive");
+            res->set_header("Access-Control-Allow-Origin", "*");
+
+            // Start chunked response
+            res->chunk_start_async([res](bool success) {
+                if (!success)
+                {
+                    AVLLM_LOG_ERROR("Failed to start chunked response");
+                    return;
+                }
+
+                // Example of streaming data
+                std::string chunk_data = "data: {\"content\": \"Hello\"}\n\n";
+                res->chunk_write_async(chunk_data, [res](bool success) {
+                    if (!success)
+                    {
+                        AVLLM_LOG_ERROR("Failed to write chunk");
+                        return;
+                    }
+
+                    // Write another chunk
+                    std::string chunk_data2 = "data: {\"content\": \" World\"}\n\n";
+                    res->chunk_write_async(chunk_data2, [res](bool success) {
+                        if (!success)
+                        {
+                            AVLLM_LOG_ERROR("Failed to write second chunk");
+                            return;
+                        }
+
+                        // End the streaming response
+                        res->chunk_end_async([](bool success) {
+                            if (!success)
+                            {
+                                AVLLM_LOG_ERROR("Failed to end chunked response");
+                            }
+                        });
+                    });
+                });
+            });
+        };
+
+        route_.post("/stream", [](std::shared_ptr<http::response> res) { std::thread{ streaming_handler, res }.detach(); });
+    }
+
     {
         // health handler
-        static auto health_handler = [](http::response res) {
-            res.set_header("Content-Type", "application/json");
+        static auto health_handler = [](std::shared_ptr<http::response> res) {
+            res->set_header("Content-Type", "application/json");
             json body;
             body["status"]  = "OK";
             body["name"]    = "av_llm";
             body["version"] = "0.0.1-Preview";
             body["uptime"]  = 0;
-            res.set_content(body.dump());
-            res.end();
+            res->set_content(body.dump());
+            res->end();
         };
 
         //
