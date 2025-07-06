@@ -29,10 +29,10 @@ struct xoptions
     xoptions()
     {
         repeat_penalty = 1.0;
-        n_ctx   = 512;
-        n_batch = 1024;
-        ngl     = 0;
-        port = 8080;
+        n_ctx          = 512;
+        n_batch        = 1024;
+        ngl            = 0;
+        port           = 8080;
     }
     // sampling
     double repeat_penalty;
@@ -48,6 +48,24 @@ struct xoptions
     // llama-server
     std::string llama_srv_args;
 };
+
+// av_connect helper
+#define HTTP_SEND_RES_AND_RETURN(res, status, message)                                                                             \
+    do                                                                                                                             \
+    {                                                                                                                              \
+        res->result() = status;                                                                                                    \
+        res->set_content(message);                                                                                                 \
+        res->end();                                                                                                                \
+        return;                                                                                                                    \
+    } while (0)
+
+#define HTTP_SEND_RES_AND_CONTINUE(res, status, message)                                                                           \
+    do                                                                                                                             \
+    {                                                                                                                              \
+        res->result() = status;                                                                                                    \
+        res->set_content(message);                                                                                                 \
+        res->end();                                                                                                                \
+    } while (0)
 
 // json
 static bool json_is_array_of_numbers(const json & data)

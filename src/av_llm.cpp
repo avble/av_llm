@@ -15,7 +15,7 @@ It can be used, modified.
 #include "av_connect.hpp"
 #include "helper.hpp"
 #include "model.hpp"
-#include <memory>
+#include "openai.hpp"
 namespace av_llm {
 #include "index.html.gz.hpp"
 }
@@ -29,6 +29,7 @@ namespace av_llm {
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <numeric>
 #include <optional>
@@ -64,23 +65,7 @@ std::filesystem::path home_path;
 std::filesystem::path app_data_path;
 common_params cparams_emb;
 
-// Update macro names for clarity
-#define HTTP_SEND_RES_AND_RETURN(res, status, message)                                                                             \
-    do                                                                                                                             \
-    {                                                                                                                              \
-        res->result() = status;                                                                                                    \
-        res->set_content(message);                                                                                                 \
-        res->end();                                                                                                                \
-        return;                                                                                                                    \
-    } while (0)
-
-#define HTTP_SEND_RES_AND_CONTINUE(res, status, message)                                                                           \
-    do                                                                                                                             \
-    {                                                                                                                              \
-        res->result() = status;                                                                                                    \
-        res->set_content(message);                                                                                                 \
-        res->end();                                                                                                                \
-    } while (0)
+using namespace av_llm;
 
 int main(int argc, char ** argv)
 {
@@ -840,39 +825,36 @@ void server_cmd_handler(std::filesystem::path model_path)
     { // models
         static auto handle_models = [&](std::shared_ptr<http::response> res) {
             AVLLM_LOG_TRACE_SCOPE("handle_models")
-            json models = { { "object", "list" },
-                            { "data",
-                              {
-                                  { { "id", "openchat_3.6" },
-                                    { "object", "model" },
-                                    { "created", std::time(0) },
-                                    { "owned_by", "avbl llm" },
-                                    { "meta", "meta" } },
-                              } } };
 
-            res->set_content(models.dump(), MIMETYPE_JSON);
+            openai::ModelList models;
+            models.add_model(openai::Model("model-id-stuff", "model", 1686935003, "stuff-01"));
+            models.add_model(openai::Model("model-id-stuff", "model", 1686935004, "stuff-02"));
+
+            res->set_content(models.to_json().dump(4), MIMETYPE_JSON);
             res->end();
         };
 
-        static auto handle_model = [&](std::shared_ptr<http::response> res) -> void {
+        static auto handle_model_detail = [&](std::shared_ptr<http::response> res) -> void {
             AVLLM_LOG_TRACE_SCOPE("handle_model");
-            json models = {
-                { "n_ctx", xoptions_.n_ctx },
-                { "n_batch", xoptions_.n_batch },
-                { "ngl", xoptions_.ngl },
-                { "port", xoptions_.port },
-                { "model_url_or_path", xoptions_.model_url_or_alias },
-                { "sampler", {} },
-            };
+            std::string model_name = res->reqwest().get_param("model");
+            if (model_name.empty())
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Model is required");
+
+            openai::Model model_info;
+            model_info.object   = "model";
+            model_info.id       = model_name;
+            model_info.created  = std::time(0);
+            model_info.owned_by = "avbl llm";
 
             // nlohmman json dump with pretty
-            res->set_content(models.dump(4), MIMETYPE_JSON);
+            res->set_content(model_info.to_json().dump(4), MIMETYPE_JSON);
             res->end();
         };
 
         route_.get("/models", handle_models);
         route_.get("/v1/models", handle_models);
-        route_.get("/model", handle_model);
+        route_.get("/models/{model}", handle_model_detail);
+        route_.get("/v1/models/{model}", handle_model_detail);
     }
 
     // OpenAI API (chat, embedding)
@@ -993,7 +975,6 @@ void server_cmd_handler(std::filesystem::path model_path)
 
                     chat_session_get(*chat_session, tokens, get_text_hdl);
 
-                    // TODO: why need to sleep?
                     res->chunk_end_async();
                 }
             }
