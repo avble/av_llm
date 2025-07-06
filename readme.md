@@ -14,15 +14,24 @@
 ### Lightweight OpenAI compatible server
 <details>
  <summary>
-Chat completion
+[Endpoint] Create Chat completion
   </summary>
  
    - [x] Default
    - [x] stream
    - [ ] Image input
    - [ ] function
+   - [ ] Logbrobs
 </details>
-
+<details>
+ <summary>
+[Endpoint] Models 
+  </summary>
+ 
+   - [x] list models  
+   - [x] retrieve model 
+   - [ ] delete a model
+</details>
 - [x] embedding
 
 ### Some examples
