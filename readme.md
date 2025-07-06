@@ -32,6 +32,7 @@
    - [x] retrieve model 
    - [ ] delete a model
 </details>
+
 - [x] embedding
 
 ### Some examples
