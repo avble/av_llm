@@ -167,6 +167,7 @@ int main(int argc, char ** argv)
 
     //
     app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
+    app.add_option("--n_predict", xoptions_.n_predict, "Number of predict")->default_val(std::to_string(xoptions_.n_predict));
 
     // sampling options
     app.add_option("--repeat-penalty", xoptions_.repeat_penalty, "Reapeat penanty")
@@ -522,14 +523,7 @@ public:
         chat_message_output.resize(llama_n_ctx(ctx.get()));
     }
 
-    ~chat_session_t()
-    {
-        AVLLM_LOG_TRACE_SCOPE("~chat_session_t");
-        if (ctx)
-        {
-            AVLLM_LOG_DEBUG("%s\n", "~chat_seesion_t is ended.");
-        }
-    }
+    ~chat_session_t() { AVLLM_LOG_TRACE_SCOPE("~chat_session_t"); }
 
 public:
     llama_context_ptr ctx;
@@ -622,6 +616,11 @@ void server_cmd_handler(std::filesystem::path model_path)
         return llama_context_ptr(llama_init_from_model(model, ctx_params));
     };
 
+    auto llama_context_init_from_ctx_params = [&model_general](const llama_context_params & ctx_params) -> llama_context_ptr {
+        llama_model * model = model_general.get();
+        return llama_context_ptr(llama_init_from_model(model, ctx_params));
+    };
+
     auto chat_session_get_n = [&](llama_sampler * smpl, chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
                                   std::function<int(int, std::string)> func_) -> int {
         llama_token new_token;
@@ -677,13 +676,12 @@ void server_cmd_handler(std::filesystem::path model_path)
             batch = llama_batch_get_one(&new_token, 1);
         }
 
-        AVLLM_LOG_INFO("%s", "\n");
         return 0;
     };
 
     auto chat_session_get = [&](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
                                 std::function<int(int, std::string)> func_) -> int {
-        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
+        // const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
 
         return chat_session_get_n(smpl_ptr.get(), chat, prompt_tokens, func_);
     };
@@ -838,7 +836,9 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     { // models
         static auto handle_models = [&](std::shared_ptr<http::response> res) {
-            AVLLM_LOG_TRACE_SCOPE("handle_models")
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "handle_models")
+                                      .c_str())
 
             openai::ModelList models;
             models.add_model(openai::Model("model-id-stuff", "model", static_cast<int64_t>(time(0)), "stuff-01"));
@@ -848,7 +848,9 @@ void server_cmd_handler(std::filesystem::path model_path)
         };
 
         static auto handle_model_detail = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE("handle_model");
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "handle_model")
+                                      .c_str())
             std::string model_name = res->reqwest().get_param("model");
             if (model_name.empty())
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Model is required");
@@ -873,30 +875,39 @@ void server_cmd_handler(std::filesystem::path model_path)
     // OpenAI API (completion, chat, embedding)
     {
         static auto completions_handler = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE("completions_handler")
-            AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_handler", res->session_id());
-            bool silent = false;
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "completions_handler")
+                                      .c_str())
 
-            json body_ = json_parse(res->reqwest().body());
+            bool silent = false;
+            json body_  = json_parse(res->reqwest().body());
             if (body_.empty())
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
 
-            int max_tokens     = json_value(body_, "max_tokens", int(0));
-            std::string prompt = json_value(body_, "prompt", std::string());
-            bool is_stream     = json_value(body_, "stream", bool(false));
+            int max_tokens      = json_value(body_, "max_tokens", int(0));
+            std::string prompt  = json_value(body_, "prompt", std::string());
+            bool is_stream      = json_value(body_, "stream", bool(false));
             int64_t temperature = json_value(body_, "temperature", int64_t(0));
 
             if (not silent)
-                AVLLM_LOG_DEBUG("max_tokens=%d, prompt=%s, is_stream=%d\n", max_tokens, prompt.c_str(), is_stream);
+                AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] max_tokens=%d, prompt=%s, is_stream=%d\n", res->session_id(),
+                                res->reqwest().request_id(), max_tokens, prompt.c_str(), is_stream);
 
             {
                 try
                 {
                     if (!res->get_session_data())
                     {
-                        AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
-                                       res->session_id());
-                        llama_context_ptr p = me_llama_context_init();
+                        AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
+                                       res->reqwest().request_id());
+
+                        llama_context_params ctx_params = llama_context_from_xoptions(xoptions_);
+                        ctx_params.n_ctx                = xoptions_.n_ctx;
+                        llama_context_ptr p             = llama_context_init_from_ctx_params(ctx_params);
+                        // print the context parameters
+                        if (not silent)
+                        {
+                        }
                         if (p)
                         {
                             res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
@@ -906,7 +917,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                     }
                 } catch (const std::exception & e)
                 {
-                    AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
+                    AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
+                                   res->reqwest().request_id());
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
                 }
 
@@ -920,56 +932,82 @@ void server_cmd_handler(std::filesystem::path model_path)
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
                                              "Tokenization failed - no tokens generated");
 
-                struct gen_text_handler_t
+                if (not is_stream)
                 {
-                    std::string gen_text;
-                    int max_tokens;
 
-                    int operator()(int rc, const std::string & text)
+                    struct gen_text_handler_t
                     {
-                        if (gen_text.size() > max_tokens)
-                            return -1;
-                        if (rc == 0)
-                            gen_text = gen_text + text;
-                        return 0;
-                    }
+                        std::string gen_text;
+                        int n_predict;
 
-                } gen_text_hdl = { "", max_tokens };
-
-                // Fixme: hardcode
-                chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
-                if (not silent)
-                    AVLLM_LOG_DEBUG("gen_text=%s\n", gen_text_hdl.gen_text.c_str());
-
-                json res_body = {
-                    { "id", "cmpl-uqkvlQyYK7bGYrRHQ0eXlWi7" },
-                    { "object", "text_completion" },
-                    { "created", 1589478378 },
-                    { "model", "qwen" },
-                    { "system_fingerprint", "fp_44709d6fcb" },
-                    { "choices", {
+                        int operator()(int rc, const std::string & text)
                         {
-                            { "text", gen_text_hdl.gen_text },
-                            { "index", 0 },
-                            { "logprobs", nullptr },
-                            { "finish_reason", "length" }
+                            if (gen_text.size() > n_predict)
+                                return -1;
+                            if (rc == 0)
+                                gen_text = gen_text + text;
+                            return 0;
                         }
-                    }},
-                    { "usage", {
-                        { "prompt_tokens", 5 },
-                        { "completion_tokens", 7 },
-                        { "total_tokens", 12 }
-                    }}
-                };
 
-                res->set_content(res_body.dump(4));
-                res->end();
+                    } gen_text_hdl = { "", xoptions_.n_predict };
+
+                    // Fixme: hardcode
+                    chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
+                    if (not silent)
+                        AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] gen_text=%s\n", res->session_id(),
+                                        res->reqwest().request_id(), gen_text_hdl.gen_text.c_str());
+
+                    json res_body = { { "id", "cmpl-uqkvlQyYK7bGYrRHQ0eXlWi7" },
+                                      { "object", "text_completion" },
+                                      { "created", 1589478378 },
+                                      { "model", "qwen" },
+                                      { "system_fingerprint", "fp_44709d6fcb" },
+                                      { "choices",
+                                        { { { "text", gen_text_hdl.gen_text },
+                                            { "index", 0 },
+                                            { "logprobs", nullptr },
+                                            { "finish_reason", "length" } } } },
+                                      { "usage", { { "prompt_tokens", 5 }, { "completion_tokens", 7 }, { "total_tokens", 12 } } } };
+
+                    res->set_content(res_body.dump(4));
+                    res->end();
+                }
+                else
+                {
+
+                    struct gen_text_handler_t
+                    {
+                        int n_predicted_tokens;
+                        int n_predict;
+                        std::shared_ptr<http::response> res;
+
+                        int operator()(int rc, const std::string & text)
+                        {
+                            if (n_predicted_tokens > n_predict)
+                            {
+                                res->chunk_write_async("data: " + oai_make_stream(text, false, "length"));
+                                return -1;
+                            }
+                            if (rc == 0)
+                            {
+                                res->chunk_write_async("data: " + oai_make_stream(text, false));
+                                n_predicted_tokens++;
+                            }
+                            return 0;
+                        }
+                    } gen_text_hdl = { 0, xoptions_.n_predict, res };
+                    // start writing chunk
+                    res->event_source_start();
+                    chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
+                    res->chunk_end_async();
+                }
             }
         };
 
         static auto completions_chat_handler = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
-            AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_chat_handler", res->session_id());
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "completions_chat_handler")
+                                      .c_str())
 
             enum CHAT_TYPE
             {
@@ -1001,8 +1039,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                 {
                     if (!res->get_session_data())
                     {
-                        AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
-                                       res->session_id());
+                        AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
+                                       res->reqwest().request_id());
                         llama_context_ptr p = me_llama_context_init();
                         if (p)
                         {
@@ -1013,7 +1051,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                     }
                 } catch (const std::exception & e)
                 {
-                    AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
+                    AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
+                                   res->reqwest().request_id());
                     HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
                 }
 
@@ -1031,9 +1070,13 @@ void server_cmd_handler(std::filesystem::path model_path)
                     {
                         std::string content = msg.at("content").get<std::string>();
                         chat_messages.push_back({ strdup(role.c_str()), strdup(content.c_str()) });
-                        std::cout << role << ":" << content << std::endl;
                     }
                 }
+
+                if (not silent)
+                    for (const auto & msg : chat_messages)
+                        AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] %s: %s\n", res->session_id(), res->reqwest().request_id(),
+                                        msg.role, msg.content);
 
                 if (chat_type == CHAT_TYPE_DEFAULT)
                 { // default
@@ -1079,10 +1122,14 @@ void server_cmd_handler(std::filesystem::path model_path)
                         HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
                                                  "Tokenization failed - no tokens generated");
                     }
+                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
 
                     chat_session_get(*chat_session, tokens, get_text_hdl);
+                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
 
                     res->chunk_end_async();
+
+                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                 }
             }
             else
@@ -1092,6 +1139,9 @@ void server_cmd_handler(std::filesystem::path model_path)
         };
 
         static auto embedding_handler = [&](std::shared_ptr<http::response> res) -> void {
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "embedding_handler")
+                                      .c_str())
             // sanity check
             if (!model_embedding)
             {
@@ -1194,7 +1244,9 @@ void server_cmd_handler(std::filesystem::path model_path)
     {
         static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
                                    &ctx_params](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE("fim handler");
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "fim_handler")
+                                      .c_str())
             bool silent               = true;
             const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
             if (!silent)
@@ -1382,7 +1434,9 @@ void server_cmd_handler(std::filesystem::path model_path)
     {
         static auto streaming_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
                                          &ctx_params](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE("streaming handler");
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "streaming_handler")
+                                      .c_str())
 
             // Set up streaming response headers
             res->set_header("Content-Type", "text/event-stream");
@@ -1434,6 +1488,9 @@ void server_cmd_handler(std::filesystem::path model_path)
     {
         // health handler
         static auto health_handler = [](std::shared_ptr<http::response> res) {
+            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                        res->reqwest().request_id(), "health_handler")
+                                      .c_str())
             res->set_header("Content-Type", "application/json");
             json body;
             body["status"]  = "OK";
