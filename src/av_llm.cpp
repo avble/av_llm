@@ -26,6 +26,7 @@ namespace av_llm {
 #include <inttypes.h>
 
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -686,6 +687,19 @@ void server_cmd_handler(std::filesystem::path model_path)
 
         return chat_session_get_n(smpl_ptr.get(), chat, prompt_tokens, func_);
     };
+    auto string_to_tokens = [&model_general](const std::string & prompt) -> std::vector<llama_token> {
+        llama_model * model = model_general.get();
+        auto tokens         = [&model, &prompt]() -> std::vector<llama_token> {
+            const llama_vocab * vocab = llama_model_get_vocab(model);
+            int n_token               = -llama_tokenize(vocab, prompt.data(), prompt.size(), NULL, 0, true, true);
+            std::vector<llama_token> tokens(n_token);
+            if (llama_tokenize(vocab, prompt.data(), prompt.size(), tokens.data(), tokens.size(), true, true) < 0)
+                return {};
+            return tokens;
+        }();
+
+        return tokens;
+    };
 
     auto chat_template_to_tokens =
         [&chat_templates, &model_general](chat_session_t & chat,
@@ -827,8 +841,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             AVLLM_LOG_TRACE_SCOPE("handle_models")
 
             openai::ModelList models;
-            models.add_model(openai::Model("model-id-stuff", "model", 1686935003, "stuff-01"));
-            models.add_model(openai::Model("model-id-stuff", "model", 1686935004, "stuff-02"));
+            models.add_model(openai::Model("model-id-stuff", "model", static_cast<int64_t>(time(0)), "stuff-01"));
 
             res->set_content(models.to_json().dump(4), MIMETYPE_JSON);
             res->end();
@@ -857,8 +870,102 @@ void server_cmd_handler(std::filesystem::path model_path)
         route_.get("/v1/models/{model}", handle_model_detail);
     }
 
-    // OpenAI API (chat, embedding)
+    // OpenAI API (completion, chat, embedding)
     {
+        static auto completions_handler = [&](std::shared_ptr<http::response> res) -> void {
+            AVLLM_LOG_TRACE_SCOPE("completions_handler")
+            AVLLM_LOG_DEBUG("%s: session-id: %" PRIu64 "\n", "completions_handler", res->session_id());
+            bool silent = false;
+
+            json body_ = json_parse(res->reqwest().body());
+            if (body_.empty())
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
+
+            int max_tokens     = json_value(body_, "max_tokens", int(0));
+            std::string prompt = json_value(body_, "prompt", std::string());
+            bool is_stream     = json_value(body_, "stream", bool(false));
+            int64_t temperature = json_value(body_, "temperature", int64_t(0));
+
+            if (not silent)
+                AVLLM_LOG_DEBUG("max_tokens=%d, prompt=%s, is_stream=%d\n", max_tokens, prompt.c_str(), is_stream);
+
+            {
+                try
+                {
+                    if (!res->get_session_data())
+                    {
+                        AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "completions_chat_handler",
+                                       res->session_id());
+                        llama_context_ptr p = me_llama_context_init();
+                        if (p)
+                        {
+                            res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
+                        }
+                        else
+                            throw std::runtime_error("can not initalize context");
+                    }
+                } catch (const std::exception & e)
+                {
+                    AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
+                }
+
+                chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
+                GGML_ASSERT(nullptr != chat_session);
+
+                // tokenize the prompt
+                auto tokens = string_to_tokens(prompt);
+
+                if (tokens.size() == 0)
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                             "Tokenization failed - no tokens generated");
+
+                struct gen_text_handler_t
+                {
+                    std::string gen_text;
+                    int max_tokens;
+
+                    int operator()(int rc, const std::string & text)
+                    {
+                        if (gen_text.size() > max_tokens)
+                            return -1;
+                        if (rc == 0)
+                            gen_text = gen_text + text;
+                        return 0;
+                    }
+
+                } gen_text_hdl = { "", max_tokens };
+
+                // Fixme: hardcode
+                chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
+                if (not silent)
+                    AVLLM_LOG_DEBUG("gen_text=%s\n", gen_text_hdl.gen_text.c_str());
+
+                json res_body = {
+                    { "id", "cmpl-uqkvlQyYK7bGYrRHQ0eXlWi7" },
+                    { "object", "text_completion" },
+                    { "created", 1589478378 },
+                    { "model", "qwen" },
+                    { "system_fingerprint", "fp_44709d6fcb" },
+                    { "choices", {
+                        {
+                            { "text", gen_text_hdl.gen_text },
+                            { "index", 0 },
+                            { "logprobs", nullptr },
+                            { "finish_reason", "length" }
+                        }
+                    }},
+                    { "usage", {
+                        { "prompt_tokens", 5 },
+                        { "completion_tokens", 7 },
+                        { "total_tokens", 12 }
+                    }}
+                };
+
+                res->set_content(res_body.dump(4));
+                res->end();
+            }
+        };
 
         static auto completions_chat_handler = [&](std::shared_ptr<http::response> res) -> void {
             AVLLM_LOG_TRACE_SCOPE("completions_chat_handler")
@@ -1071,10 +1178,9 @@ void server_cmd_handler(std::filesystem::path model_path)
         };
 
         // completion (it is only support stream, and non-stream)
-        route_.post("/completions",
-                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
+        route_.post("/completions", [](std::shared_ptr<http::response> res) { std::thread{ completions_handler, res }.detach(); });
         route_.post("/v1/completions",
-                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
+                    [](std::shared_ptr<http::response> res) { std::thread{ completions_handler, res }.detach(); });
         route_.post("/chat/completions",
                     [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
         route_.post("/v1/chat/completions",

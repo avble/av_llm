@@ -85,7 +85,6 @@ struct ModelList
     // Get number of models
     size_t size() const { return data.size(); }
 };
-
 // Convenience functions for nlohmann/json automatic serialization
 void to_json(json & j, const Model & m)
 {
