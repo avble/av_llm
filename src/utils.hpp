@@ -28,12 +28,19 @@ struct xoptions
 {
     xoptions()
     {
+        n_predict = 1024;
+
         repeat_penalty = 1.0;
-        n_ctx          = 512;
-        n_batch        = 1024;
-        ngl            = 0;
-        port           = 8080;
+
+        n_ctx   = 4096;
+        n_batch = 4096;
+        ngl     = 0;
+
+        port = 8080;
     }
+
+    int n_predict;
+
     // sampling
     double repeat_penalty;
     // decoding
@@ -47,6 +54,24 @@ struct xoptions
     std::string model_path_emb;
     // llama-server
     std::string llama_srv_args;
+};
+
+// oai
+static std::string oai_make_stream(std::string data, bool is_chat = true, std::optional<std::string> finish_reason = std::nullopt)
+{
+    nlohmann::json js{ { "id", "chatcmpl-123" },
+                       { "object", is_chat ? "chat.completion.chunk" : "text_completion" },
+                       { "created", std::time(0) },
+                       { "model", "gpt-4o-mini" },
+                       { "system_fingerprint", "fp_44709d6fcb" },
+                       { "choices",
+                         { { { "index", 0 },
+                             is_chat ? nlohmann::json{ "delta", { { "role", "assistant" }, { "content", data } } }
+                                     : nlohmann::json{ "text", data },
+                             { "logprobs", nullptr },
+                             { "finish_reason", finish_reason.value_or("none") } } } } };
+
+    return js.dump() + "\n\n";
 };
 
 // av_connect helper
@@ -161,6 +186,16 @@ static json json_parse(const T & data)
 }
 
 // llama
+
+static llama_context_params llama_context_from_xoptions(const xoptions & xoptions_)
+{
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.no_perf              = false;
+    ctx_params.n_ctx                = xoptions_.n_ctx;
+    ctx_params.n_batch              = xoptions_.n_batch;
+    return ctx_params;
+}
+
 static void llama_sampler_print(const llama_sampler * smpl)
 {
     int n_samplers = llama_sampler_chain_n(smpl);
