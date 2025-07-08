@@ -1,5 +1,7 @@
 # Qwen3-8B
-## Tool
+## Think
+
+## Function calling 
 ```sh
 $ avllm_gen.exe -m Qwen3-8B -input @file_1 
 ```
@@ -49,18 +51,72 @@ gen function call
 </tool_call>
 ```
 </details>
-
 </summary>
+
+Other tools
+```
+# Home automation 
+{"name":"turn_off","description":"turn off a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn off a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
+{"name":"turn_on","description":"turn on a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn on a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
+{"name":"get_all_devices","description":"Get all devices","parameters":{}}
+{"name":"get_devices_by_name","description":"get device by names","parameters":{"type":"object","properties":{"name":{"type":"string","description":"get device by name, e.g. light 01, light 02, lights"}},"required":["name"]}}
+```
 
 </details>
 
 # Qwen2.5-Coder-Instructor
 ## Chat
-prompt = "write a quick sort algorithm."
-messages = [
-    {"role": "system", "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
-    {"role": "user", "content": prompt}
+
+- given chatML format messages
+``` json
+[
+  {
+    "role": "system",
+    "content": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
+  },
+  {
+    "role": "user",
+    "content": "write a quick sort algorithm in python"
+  }
 ]
+```
+- expected output
+
+Certainly! Quick sort is a popular and efficient sorting algorithm that uses a divide-and-conquer approach. Below is a simple implementation of the quick sort
+ algorithm in Python:
+
+```python
+def quick_sort(arr):
+    if len(arr) <= 1:
+        return arr
+    else:
+        pivot = arr[len(arr) // 2]  # Choose the middle element as the pivot
+        left = [x for x in arr if x < pivot]  # Elements less than the pivot
+        middle = [x for x in arr if x == pivot]  # Elements equal to the pivot
+        right = [x for x in arr if x > pivot]  # Elements greater than the pivot
+        return quick_sort(left) + middle + quick_sort(right)
+
+# Example usage:
+arr = [3, 6, 8, 10, 1, 2, 1]
+sorted_arr = quick_sort(arr)
+print("Sorted array:", sorted_arr)
+
+```
+
+<details>
+<summary>
+more..
+</summary>
+### Explanation:
+1. **Base Case**: If the array has 0 or 1 element, it is already sorted, so we return it as is.
+2. **Pivot Selection**: We choose the middle element of the array as the pivot. This is a simple choice, but other strategies like choosing the first, last, o
+r a random element can also be used.
+3. **Partitioning**: We create three lists:
+   - `left`: Contains elements less than the pivot.
+   - `middle`: Contains elements equal to the pivot.
+   - `right`: Contains elements greater than the pivot.
+4. **Recursive Sorting**: We recursively apply the quick sort algorithm to the `left` and `right` lists and concatenate the results with the `middle` list.
+</details>
 
 ## FIM
 {
@@ -107,36 +163,6 @@ output_text = TOKENIZER.decode(generated_ids[len(model_inputs.input_ids[0]):], s
 print(f"Prompt: {input_text}\n\nGenerated text: {output_text}")
 ```
 
-# Godegema
-
-# Codestral
-
-# Deepseek coder
-
-# Qwen3-embedding
-+ sequence(sentence)-level decoding
-+ 
-
-# (Qwen3-4B-GGUF)[https://huggingface.co/Qwen/Qwen3-4B-GGUF]
-
-``` i.e chat
-> Who are you /no_think
-
-<think>
-
-</think>
-
-I am Qwen, a large-scale language model developed by Alibaba Cloud. [...]
-
-> How many 'r's are in 'strawberries'? /think
-
-<think>
-Okay, let's see. The user is asking how many times the letter 'r' appears in the word "strawberries". [...]
-</think>
-
-The word strawberries contains 3 instances of the letter r. [...]
-
-```
 
 ## Reference
 - https://qwenlm.github.io/blog/qwen3-embedding/
