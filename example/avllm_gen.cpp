@@ -28,8 +28,8 @@ generate the tokens
 static void print_usage(int, char ** argv)
 {
     printf("\nexample usage:\n");
-    printf("\n    %s -m model.gguf -input prompt"
-           "                       -input @file ",
+    printf("%15s -m model.gguf -input prompt\n"
+           "                              -input @file\n",
            argv[0]);
     printf("\n");
 }
@@ -68,6 +68,11 @@ int main(int argc, char ** argv)
                 {
                     print_usage(1, argv);
                 }
+            }
+            else if (strcmp(argv[i], "-h") == 0)
+            {
+                print_usage(1, argv);
+                exit(0);
             }
         }
     }();
