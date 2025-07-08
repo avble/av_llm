@@ -9,8 +9,11 @@ $ avllm_gen.exe -m Qwen3-8B -input @file_1
 what is the weather like?
 </summary>
 
-- given text
-
+<details>
+<summary>
+    given text
+</summary>
+    
 ``` 
 <|im_start|>system
 You are a helpful assistant that can use tools to get information for the user.
@@ -33,13 +36,21 @@ For each function call, return a json object with function name and arguments wi
 What's the weather like in New York?<|im_end|><|im_start|>
 
 ```
+</details>
 
-- output
+<details>
+<summary>
+gen function call
+</summary>
+    
 ```
 <tool_call>
 {"name": "get_weather", "arguments": {"location": "New York", "unit": "fahrenheit"}}
 </tool_call>
 ```
+</details>
+
+</summary>
 
 </details>
 
