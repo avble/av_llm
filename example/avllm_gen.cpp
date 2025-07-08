@@ -186,8 +186,7 @@ int main(int argc, char ** argv)
         }
     }
 
-    std::cout << "Inference: \n";
-    // do inference
+    std::cout << "Generate text:\n";
     {
         const llama_vocab * vocab = llama_model_get_vocab(model);
         const auto t_main_start   = ggml_time_us();

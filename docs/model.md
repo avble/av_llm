@@ -53,19 +53,30 @@ gen function call
 </details>
 </summary>
 
-Other tools
+</details>
+
+### Home automation tools
+
+[x] turn on, off device
+[x] get all devices
+[x] get a device by name
+
 ```
-# Home automation 
+<tool_call>
 {"name":"turn_off","description":"turn off a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn off a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
 {"name":"turn_on","description":"turn on a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn on a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
 {"name":"get_all_devices","description":"Get all devices","parameters":{}}
 {"name":"get_devices_by_name","description":"get device by names","parameters":{"type":"object","properties":{"name":{"type":"string","description":"get device by name, e.g. light 01, light 02, lights"}},"required":["name"]}}
+</tool_call>
 ```
 
-</details>
 
 # Qwen2.5-Coder-Instructor
 ## Chat
+
+```sh
+$ avllm_gen.exe -m <path-to-qwen2.5-model> -input @file_1 
+```
 
 - given chatML format messages
 ``` json
@@ -118,51 +129,38 @@ r a random element can also be used.
 4. **Recursive Sorting**: We recursively apply the quick sort algorithm to the `left` and `right` lists and concatenate the results with the `middle` list.
 </details>
 
-## FIM
-{
-  "<|fim_prefix|>": 151659, 
-  "<|fim_middle|>": 151660, 
-  "<|fim_suffix|>": 151661, 
-  "<|fim_pad|>": 151662, 
-  "<|repo_name|>": 151663, 
-  "<|file_sep|>": 151664, 
-  "<|im_start|>": 151644, 
-  "<|im_end|>": 151645
-}
+## FIM (Fill-In-Middle)
 
-## Tool
 
-```
-prompt = '<|fim_prefix|>' + prefix_code + '<|fim_suffix|>' + suffix_code + '<|fim_middle|>'
+- Given the input
+
+``` sh
+$ avllm_gen.exe -m <path-to-model> -input @file
 ```
 
-``` python
-from transformers import AutoTokenizer, AutoModelForCausalLM
-# load model
-device = "cuda" # the device to load the model onto
-
-TOKENIZER = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-32B")
-MODEL = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-Coder-32B", device_map="auto").eval()
-
-input_text = """<|fim_prefix|>def quicksort(arr):
+- given the input
+```
+<|fim_prefix|>def quicksort(arr):
     if len(arr) <= 1:
         return arr
     pivot = arr[len(arr) // 2]
     <|fim_suffix|>
     middle = [x for x in arr if x == pivot]
     right = [x for x in arr if x > pivot]
-    return quicksort(left) + middle + quicksort(right)<|fim_middle|>"""
-
-model_inputs = TOKENIZER([input_text], return_tensors="pt").to(device)
-
-# Use `max_new_tokens` to control the maximum output length.
-generated_ids = MODEL.generate(model_inputs.input_ids, max_new_tokens=512, do_sample=False)[0]
-# The generated_ids include prompt_ids, we only need to decode the tokens after prompt_ids.
-output_text = TOKENIZER.decode(generated_ids[len(model_inputs.input_ids[0]):], skip_special_tokens=True)
-
-print(f"Prompt: {input_text}\n\nGenerated text: {output_text}")
+    return quicksort(left) + middle + quicksort(right)<|fim_middle|><|endoftext|>
 ```
 
+- expected output
+``` python
+def quicksort(arr):
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + middle + quicksort(right)
+```
 
 ## Reference
 - https://qwenlm.github.io/blog/qwen3-embedding/
