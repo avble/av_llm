@@ -1008,6 +1008,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                         res->reqwest().request_id(), "completions_chat_handler")
                                       .c_str())
+            bool silent = false;
 
             enum CHAT_TYPE
             {
@@ -1075,8 +1076,13 @@ void server_cmd_handler(std::filesystem::path model_path)
 
                 if (not silent)
                     for (const auto & msg : chat_messages)
+                    {
+                        std::string content_str(msg.content ? msg.content : "");
+                        if (content_str.size() > 50)
+                            content_str = content_str.substr(0, 50);
                         AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] %s: %s\n", res->session_id(), res->reqwest().request_id(),
-                                        msg.role, msg.content);
+                                        msg.role, content_str.c_str());
+                    }
 
                 if (chat_type == CHAT_TYPE_DEFAULT)
                 { // default
@@ -1122,14 +1128,10 @@ void server_cmd_handler(std::filesystem::path model_path)
                         HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
                                                  "Tokenization failed - no tokens generated");
                     }
-                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
 
                     chat_session_get(*chat_session, tokens, get_text_hdl);
-                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
 
                     res->chunk_end_async();
-
-                    printf("[DEBUG] %s:%d \n", __func__, __LINE__);
                 }
             }
             else

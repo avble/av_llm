@@ -1,5 +1,6 @@
 /*
-This sample tool is insprised from llama.cpp (simple)
+given a promt from command-line or reading from file
+generate the tokens
 */
 
 #include "arg.h"
@@ -14,6 +15,7 @@ This sample tool is insprised from llama.cpp (simple)
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -26,23 +28,22 @@ This sample tool is insprised from llama.cpp (simple)
 static void print_usage(int, char ** argv)
 {
     printf("\nexample usage:\n");
-    printf("\n    %s -m model.gguf -p prompt\n", argv[0]);
+    printf("\n    %s -m model.gguf -input prompt"
+           "                       -input @file ",
+           argv[0]);
     printf("\n");
 }
 
-/*
-> avllm_gen [model] @file:// @http://
-produce 1 shot
-*/
+// global option
+std::string model_path;
+std::string prompt;
 
 int main(int argc, char ** argv)
 {
 
     common_params params;
 
-    std::string model_path;
-    std::string prompt;
-    [&argc, &argv](auto & model_path, auto & prompt) { // parsing the argument
+    [&argc, &argv]() { // parsing the argument
         int i = 0;
         for (int i = 1; i < argc; i++)
         {
@@ -57,7 +58,7 @@ int main(int argc, char ** argv)
                     print_usage(1, argv);
                 }
             }
-            else if (strcmp(argv[i], "-p") == 0)
+            else if (strcmp(argv[i], "-input") == 0)
             {
                 if (i + 1 < argc)
                 {
@@ -69,18 +70,31 @@ int main(int argc, char ** argv)
                 }
             }
         }
-    }(model_path, prompt);
+    }();
     if (model_path == "" or prompt == "")
     {
         print_usage(1, argv);
         return 1;
     }
-    std::cout << "prompt: " << prompt << std::endl;
+
+    if (prompt.size() > 1 and prompt[0] == '@')
+    {
+        std::string input_file_path = prompt.substr(1);
+        std::ifstream in_f(input_file_path);
+        if (not in_f.is_open())
+        {
+            std::cerr << "file: " << input_file_path << " not found " << std::endl;
+            exit(-1);
+        }
+        std::ostringstream osstream;
+        osstream << in_f.rdbuf();
+        prompt = osstream.str();
+    }
 
     ggml_backend_load_all();
 
     // model initialized
-    llama_model * model = [model_path]() -> llama_model * {
+    llama_model * model = []() -> llama_model * {
         llama_model_params model_params = llama_model_default_params();
         model_params.n_gpu_layers       = 99;
         return llama_model_load_from_file(model_path.c_str(), model_params);
@@ -92,7 +106,7 @@ int main(int argc, char ** argv)
     }
 
     // context initialize
-    llama_context * ctx = [&model, &prompt]() -> llama_context * {
+    llama_context * ctx = [&model]() -> llama_context * {
         const llama_vocab * vocab = llama_model_get_vocab(model);
         const int n_prompt        = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
 
@@ -133,7 +147,6 @@ int main(int argc, char ** argv)
         }
 
         const int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
-        // std::cout << n_prompt_tokens << std::endl;
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
 
         if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
@@ -168,6 +181,7 @@ int main(int argc, char ** argv)
         }
     }
 
+    std::cout << "Inference: \n";
     // do inference
     {
         const llama_vocab * vocab = llama_model_get_vocab(model);
