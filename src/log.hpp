@@ -73,7 +73,7 @@ static void log(log_level level, const char * module, const char * format, Args.
 {
     if (level >= current_log_level)
     {
-        printf("%s [%s] ", get_level_prefix(level), module);
+        printf("%7s[%-6s] ", get_level_prefix(level), module);
         printf(format, args...);
     }
 }
@@ -91,10 +91,28 @@ class logger_function_trace
 public:
     logger_function_trace(std::string cls_, std::string func_) : cls(cls_), func(func_)
     {
-        log(log_level::LOG_TRACE, "AVLLM", "%s:%s ENTER\n", cls.c_str(), func.c_str());
+        if (!cls.empty() && !func.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s:%s ENTER\n", cls.c_str(), func.c_str());
+        } else if (!cls.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s ENTER\n", cls.c_str());
+        } else if (!func.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s ENTER\n", func.c_str());
+        } else {
+            log(log_level::LOG_TRACE, "AVLLM", "ENTER\n");
+        }
     }
 
-    ~logger_function_trace() { log(log_level::LOG_TRACE, "AVLLM", "%s:%s LEAVE\n", cls.c_str(), func.c_str()); }
+    ~logger_function_trace() {
+        if (!cls.empty() && !func.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s:%s LEAVE\n", cls.c_str(), func.c_str());
+        } else if (!cls.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", cls.c_str());
+        } else if (!func.empty()) {
+            log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", func.c_str());
+        } else {
+            log(log_level::LOG_TRACE, "AVLLM", "LEAVE\n");
+        }
+    }
 
 private:
     const std::string cls;
