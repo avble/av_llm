@@ -2,7 +2,7 @@
 
 - Gen AI stuff
 
-## Hot topics
+## News
 
 - Demo MCP: [document](./docs/model.md), search for MCP
 - Demo FIM: [document](./docs/model.md), search for FIM
