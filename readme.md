@@ -32,7 +32,7 @@
 </details>
 
 <details>
- <summary> [Endpoint] FIM (Finish-In-Middle) </summary>
+ <summary> [Endpoint] FIM (Fill-In-Middle) </summary>
  
 - [x] File-level 
 - [ ] Rep-level
