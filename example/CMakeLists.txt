@@ -13,8 +13,8 @@ function(add_llm_example name)
 endfunction()
 
 add_llm_example(avllm_gen)
-add_llm_example(avllm_simple)
 add_llm_example(avllm_chat)
+add_llm_example(avllm_cli)
 add_llm_example(avllm_embedding)
 #add_llm_example(llama_embedding)
 

@@ -1,24 +1,31 @@
 # Qwen3-8B
 ## Think
-
-## Function calling 
-```sh
-$ avllm_gen.exe -m Qwen3-8B -input @file_1 
+Think is default. 
+no-think by setting /nothink in prompt
+``` think
+[
+    {"role":"system","content":"You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
+    {"role":"user","content":"write a quick sort algorithm in python"}
+]
 ```
-
 <details>
 <summary>
-what is the weather like?
+nothink
 </summary>
+[
+    {"role":"system","content":"You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
+    {"role":"user","content":"write a quick sort algorithm in python"}
+]
+</details>
 
-<details>
-<summary>
-    given text
-</summary>
-    
-``` 
+## MCP
+Demonstrate the MCP capability
+
+- given text
+
+```
 <|im_start|>system
-You are a helpful assistant that can use tools to get information for the user.
+You play with MCP demonstration ability 
 
 # Tools
 
@@ -26,56 +33,49 @@ You may call one or more functions to assist with the user query.
 
 You are provided with function signatures within <tools></tools> XML tags:
 <tools>
-{"name": "get_weather", "description": "Get current weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "The unit of temperature to use"}}, "required": ["location"]}}
-</tools>
+{
+  "mcpServers": {
+    "command": "uvx",
+    "args": [
+      "mcp-server-time",
+      "--local-timezone",
+      "location, name of place"
+    ]
+  },
+  "fetch": {
+    "command": "uvx",
+    "args": [
+      "mcp-server-fetch",
+      "--url",
+      "http address for fetching the content"
+    ]
+  }
+}
+</tools><|im_end|>
 
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags.
-
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call><|im_end|>
 <|im_start|>user
-What's the weather like in New York?<|im_end|><|im_start|>
-
-```
-</details>
-
-<details>
-<summary>
-gen function call
-</summary>
-    
-```
-<tool_call>
-{"name": "get_weather", "arguments": {"location": "New York", "unit": "fahrenheit"}}
-</tool_call>
-```
-</details>
-</summary>
-
-</details>
-
-### Home automation tools
-
-[x] turn on, off device
-[x] get all devices
-[x] get a device by name
-
-```
-<tool_call>
-{"name":"turn_off","description":"turn off a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn off a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
-{"name":"turn_on","description":"turn on a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn on a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
-{"name":"get_all_devices","description":"Get all devices","parameters":{}}
-{"name":"get_devices_by_name","description":"get device by names","parameters":{"type":"object","properties":{"name":{"type":"string","description":"get device by name, e.g. light 01, light 02, lights"}},"required":["name"]}}
-</tool_call>
+fetch content from http://abc.com <|im_end|><|endoftext|>
 ```
 
 
-# Qwen2.5-Coder-Instructor
+- generated text
+```
+<tool>
+  "command": "uvx",
+  "args": [
+    "mcp-server-fetch",
+    "--url",
+    "http://abc.com"
+  ]
+</tool>
+```
+
+
+# Qwen2.5
 ## Chat
 
 ```sh
-$ avllm_gen.exe -m <path-to-qwen2.5-model> -input @file_1 
+$ avllm_gen.exe -m <path-to-model> -input @file_1 
 ```
 
 - given chatML format messages
@@ -129,8 +129,75 @@ r a random element can also be used.
 4. **Recursive Sorting**: We recursively apply the quick sort algorithm to the `left` and `right` lists and concatenate the results with the `middle` list.
 </details>
 
-## FIM (Fill-In-Middle)
+## Function calling 
+```sh
+$ avllm_gen.exe -m <path-to-Qwen2.5-model> -input @file_1 
+```
 
+<details>
+<summary>
+what is the weather like?
+</summary>
+
+<details>
+<summary>
+    given text
+</summary>
+    
+``` 
+<|im_start|>system
+You are a helpful assistant that can use tools to get information for the user.
+
+# Tools
+
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{"name": "get_weather", "description": "Get current weather information for a location", "parameters": {"type": "object", "properties": {"location": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "The unit of temperature to use"}}, "required": ["location"]}}
+</tools>
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags.
+
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call><|im_end|>
+<|im_start|>user
+What's the weather like in New York?<|im_end|><|im_start|>
+
+```
+</details>
+
+<details>
+<summary>
+- generated text
+</summary>
+    
+```
+<tool_call>
+{"name": "get_weather", "arguments": {"location": "New York", "unit": "fahrenheit"}}
+</tool_call>
+```
+</details>
+</summary>
+
+</details>
+
+### Home automation tools
+
+[x] turn on, off device
+[x] get all devices
+[x] get a device by name
+
+```
+<tool_call>
+{"name":"turn_off","description":"turn off a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn off a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
+{"name":"turn_on","description":"turn on a device","parameters":{"type":"object","properties":{"name":{"type":"string","description":"turn on a device, e.g. light 01, light 02, living room"}},"required":["name"]}}
+{"name":"get_all_devices","description":"Get all devices","parameters":{}}
+{"name":"get_devices_by_name","description":"get device by names","parameters":{"type":"object","properties":{"name":{"type":"string","description":"get device by name, e.g. light 01, light 02, lights"}},"required":["name"]}}
+</tool_call>
+```
+
+## FIM (Fill-In-Middle)
 
 - Given the input
 

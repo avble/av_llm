@@ -45,8 +45,7 @@
 ## Compilation
 
 ``` shell
-$ # clone source code
-$ cmake -B build && cmake --build build
+T.B.U
 ```
 
 ## Quick started
