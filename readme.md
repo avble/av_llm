@@ -2,14 +2,12 @@
 
 - Gen AI stuff
 
-## showcases 
-<details>
- <summary> FIM (Finish-In-Middle) </summary>
- 
-- [x] File-level 
-- [ ] Rep-level
- </details>
- 
+## Hot topics
+
+- Demo MCP: [document](./docs/model.md), search for MCP
+- Demo FIM: [document](./docs/model.md), search for FIM
+- Demo Code Completion: [document](./docs/model.md), search for code completion
+
 ## What it has?
 ### Lightweight OpenAI compatible server
 <details>
@@ -33,10 +31,13 @@
    - [ ] delete a model
 </details>
 
-[Endpoint] FIM (fill-in-middle) 
-
-- [x] embedding
-
+<details>
+ <summary> [Endpoint] FIM (Finish-In-Middle) </summary>
+ 
+- [x] File-level 
+- [ ] Rep-level
+ </details>
+ 
 ### Some examples
 |Item                 |Brief                                              |link                           |
 |-------------------- |-------------------------------------------------- |------------------------------ |
