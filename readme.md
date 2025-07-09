@@ -33,20 +33,28 @@
    - [ ] delete a model
 </details>
 
+[Endpoint] FIM (fill-in-middle) 
+
 - [x] embedding
 
 ### Some examples
 |Item                 |Brief                                              |link                           |
 |-------------------- |-------------------------------------------------- |------------------------------ |
 |gen                  |given input, generate the sequence of text         |[example/avllm_gen.cpp](example/avllm_gen.cpp) |
+|chat                 |given chatML format, generate the sequence of text |[example/avllm_gen.cpp](example/avllm_chat.cpp) |
 |embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
 
 
-## Compilation
+## Models
+[details](docs/model.md)
 
-``` shell
-T.B.U
-```
+| Model                                                                                             | ~GB   | Tags          | Remark  |
+|---------------------------------------------------------------------------------------------------|-------|---------------|---------|
+| Qwen3-8B                                                                                          |       | think, MCP    |         |
+| [Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B-GGUF)                                             | ~3 Gb |               | Q4, K_M |
+| [Qwen2.5-Coder-3B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF) |       | chat, coding, FIM   |         |
+|                                                                                                   |       |               |         |
+
 
 ## Quick started
 
@@ -84,12 +92,11 @@ Support various GPU's library/platform.
 
 </details>
 
-## Models
-| Model                                                                                             | ~GB   | Tags          | Remark  |
-|---------------------------------------------------------------------------------------------------|-------|---------------|---------|
-| [Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B-GGUF)                                             | ~3 Gb | coding, think | Q4, K_M |
-| [Qwen2.5-Coder-3B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF) |       | coding, FIM   |         |
-|                                                                                                   |       |               |         |
+## Compilation
+
+``` shell
+T.B.U
+```
 
 ## Main components
 - Web UI: Provide a simple web UI interface to explore/experiment (borrowed from @llama.cpp project)
