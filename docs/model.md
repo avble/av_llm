@@ -10,12 +10,15 @@ no-think by setting /nothink in prompt
 ```
 <details>
 <summary>
-nothink
+disable by adding '/nothink' to chat messages
 </summary>
+    
+```
 [
     {"role":"system","content":"You are Qwen, created by Alibaba Cloud. You are a helpful assistant."},
-    {"role":"user","content":"write a quick sort algorithm in python"}
+    {"role":"user","content":"/nothink write a quick sort algorithm in python"}
 ]
+```
 </details>
 
 ## MCP
@@ -72,7 +75,7 @@ fetch content from http://abc.com <|im_end|><|endoftext|>
 
 
 # Qwen2.5
-## Chat
+## Chat (code completion)
 
 ```sh
 $ avllm_gen.exe -m <path-to-model> -input @file_1 
@@ -118,6 +121,8 @@ print("Sorted array:", sorted_arr)
 <summary>
 more..
 </summary>
+
+```    
 ### Explanation:
 1. **Base Case**: If the array has 0 or 1 element, it is already sorted, so we return it as is.
 2. **Pivot Selection**: We choose the middle element of the array as the pivot. This is a simple choice, but other strategies like choosing the first, last, o
@@ -127,6 +132,7 @@ r a random element can also be used.
    - `middle`: Contains elements equal to the pivot.
    - `right`: Contains elements greater than the pivot.
 4. **Recursive Sorting**: We recursively apply the quick sort algorithm to the `left` and `right` lists and concatenate the results with the `middle` list.
+```
 </details>
 
 ## Function calling 
@@ -184,9 +190,9 @@ What's the weather like in New York?<|im_end|><|im_start|>
 
 ### Home automation tools
 
-[x] turn on, off device
-[x] get all devices
-[x] get a device by name
+    [x] turn on, off device
+    [x] get all devices
+    [x] get a device by name
 
 ```
 <tool_call>
@@ -199,13 +205,13 @@ What's the weather like in New York?<|im_end|><|im_start|>
 
 ## FIM (Fill-In-Middle)
 
-- Given the input
+- command-line
 
 ``` sh
 $ avllm_gen.exe -m <path-to-model> -input @file
 ```
 
-- given the input
+- given input
 ```
 <|fim_prefix|>def quicksort(arr):
     if len(arr) <= 1:
