@@ -679,10 +679,8 @@ void server_cmd_handler(std::filesystem::path model_path)
         return 0;
     };
 
-    auto chat_session_get = [&](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
-                                std::function<int(int, std::string)> func_) -> int {
-        // const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
-
+    auto chat_session_get = [&smpl_ptr, &chat_session_get_n](chat_session_t & chat, std::vector<llama_token> & prompt_tokens,
+                                                             std::function<int(int, std::string)> func_) -> int {
         return chat_session_get_n(smpl_ptr.get(), chat, prompt_tokens, func_);
     };
     auto string_to_tokens = [&model_general](const std::string & prompt) -> std::vector<llama_token> {
@@ -772,758 +770,697 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     http::route route_;
 
-    { // embedded web
-        // legacy api
-        struct handle_static_file
+    // embedded web
+    // legacy api
+    struct handle_static_file
+    {
+        handle_static_file(std::string _file_path, std::string _content_type)
         {
-            handle_static_file(std::string _file_path, std::string _content_type)
+            file_path    = _file_path;
+            content_type = _content_type;
+        }
+        void operator()(std::shared_ptr<http::response> res)
+        {
+            AVLLM_LOG_TRACE_SCOPE("handle_static_file")
+            if (not std::filesystem::exists(std::filesystem::path(file_path)))
             {
-                file_path    = _file_path;
-                content_type = _content_type;
-            }
-            void operator()(std::shared_ptr<http::response> res)
-            {
-                AVLLM_LOG_TRACE_SCOPE("handle_static_file")
-                if (not std::filesystem::exists(std::filesystem::path(file_path)))
-                {
-                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::not_found, "File not found");
-                }
-
-                res->set_header("Content-Type", content_type);
-
-                std::ifstream infile(file_path);
-                std::stringstream str_stream;
-                str_stream << infile.rdbuf();
-                res->set_content(str_stream.str(), content_type);
-                res->end();
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::not_found, "File not found");
             }
 
-            std::string file_path;
-            std::string content_type;
-        };
+            res->set_header("Content-Type", content_type);
 
-        static auto preflight = [](std::shared_ptr<http::response> res) {
-            res->set_header("Access-Control-Allow-Origin", res->reqwest().get_header("origin"));
-            res->set_header("Access-Control-Allow-Credentials", "true");
-            res->set_header("Access-Control-Allow-Methods", "POST");
-            res->set_header("Access-Control-Allow-Headers", "*");
-            res->set_content("", "text/html");
+            std::ifstream infile(file_path);
+            std::stringstream str_stream;
+            str_stream << infile.rdbuf();
+            res->set_content(str_stream.str(), content_type);
             res->end();
-        };
-
-        static auto web_handler = [&](std::shared_ptr<http::response> res) -> void {
-            if (res->reqwest().get_header("accept-encoding").find("gzip") == std::string::npos)
-            {
-                res->set_content("Error: gzip is not supported by this browser", "text/plain");
-            }
-            else
-            {
-                res->set_header("Content-Encoding", "gzip");
-                // COEP and COOP headers, required by pyodide (python interpreter)
-                res->set_header("Cross-Origin-Embedder-Policy", "require-corp");
-                res->set_header("Cross-Origin-Opener-Policy", "same-origin");
-                res->set_content(reinterpret_cast<const char *>(av_llm::index_html_gz), av_llm::index_html_gz_len,
-                                 "text/html; charset=utf-8");
-                // res->set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
-            }
-            res->end();
-        };
-
-        route_.set_option_handler(preflight);
-        route_.get("/", web_handler);
-        route_.get("/index.html", web_handler);
-    }
-
-    { // models
-        static auto handle_models = [&](std::shared_ptr<http::response> res) {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "handle_models")
-                                      .c_str())
-
-            openai::ModelList models;
-            models.add_model(openai::Model("model-id-stuff", "model", static_cast<int64_t>(time(0)), "stuff-01"));
-
-            res->set_content(models.to_json().dump(4), MIMETYPE_JSON);
-            res->end();
-        };
-
-        static auto handle_model_detail = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "handle_model")
-                                      .c_str())
-            std::string model_name = res->reqwest().get_param("model");
-            if (model_name.empty())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Model is required");
-
-            openai::Model model_info;
-            model_info.object   = "model";
-            model_info.id       = model_name;
-            model_info.created  = std::time(0);
-            model_info.owned_by = "avbl llm";
-
-            // nlohmman json dump with pretty
-            res->set_content(model_info.to_json().dump(4), MIMETYPE_JSON);
-            res->end();
-        };
-
-        route_.get("/models", handle_models);
-        route_.get("/v1/models", handle_models);
-        route_.get("/models/{model}", handle_model_detail);
-        route_.get("/v1/models/{model}", handle_model_detail);
-    }
-
-    // OpenAI API (completion, chat, embedding)
-    {
-        static auto completions_handler = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "completions_handler")
-                                      .c_str())
-
-            bool silent = false;
-            json body_  = json_parse(res->reqwest().body());
-            if (body_.empty())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
-
-            int max_tokens      = json_value(body_, "max_tokens", int(0));
-            std::string prompt  = json_value(body_, "prompt", std::string());
-            bool is_stream      = json_value(body_, "stream", bool(false));
-            int64_t temperature = json_value(body_, "temperature", int64_t(0));
-
-            if (not silent)
-                AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] max_tokens=%d, prompt=%s, is_stream=%d\n", res->session_id(),
-                                res->reqwest().request_id(), max_tokens, prompt.c_str(), is_stream);
-
-            {
-                try
-                {
-                    if (!res->get_session_data())
-                    {
-                        AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
-                                       res->reqwest().request_id());
-
-                        llama_context_params ctx_params = llama_context_from_xoptions(xoptions_);
-                        ctx_params.n_ctx                = xoptions_.n_ctx;
-                        llama_context_ptr p             = llama_context_init_from_ctx_params(ctx_params);
-                        // print the context parameters
-                        if (not silent)
-                        {
-                        }
-                        if (p)
-                        {
-                            res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
-                        }
-                        else
-                            throw std::runtime_error("can not initalize context");
-                    }
-                } catch (const std::exception & e)
-                {
-                    AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
-                                   res->reqwest().request_id());
-                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
-                }
-
-                chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
-                GGML_ASSERT(nullptr != chat_session);
-
-                // tokenize the prompt
-                auto tokens = string_to_tokens(prompt);
-
-                if (tokens.size() == 0)
-                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
-                                             "Tokenization failed - no tokens generated");
-
-                if (not is_stream)
-                {
-
-                    struct gen_text_handler_t
-                    {
-                        std::string gen_text;
-                        int n_predict;
-
-                        int operator()(int rc, const std::string & text)
-                        {
-                            if (gen_text.size() > n_predict)
-                                return -1;
-                            if (rc == 0)
-                                gen_text = gen_text + text;
-                            return 0;
-                        }
-
-                    } gen_text_hdl = { "", xoptions_.n_predict };
-
-                    // Fixme: hardcode
-                    chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
-                    if (not silent)
-                        AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] gen_text=%s\n", res->session_id(),
-                                        res->reqwest().request_id(), gen_text_hdl.gen_text.c_str());
-
-                    json res_body = { { "id", "cmpl-uqkvlQyYK7bGYrRHQ0eXlWi7" },
-                                      { "object", "text_completion" },
-                                      { "created", 1589478378 },
-                                      { "model", "qwen" },
-                                      { "system_fingerprint", "fp_44709d6fcb" },
-                                      { "choices",
-                                        { { { "text", gen_text_hdl.gen_text },
-                                            { "index", 0 },
-                                            { "logprobs", nullptr },
-                                            { "finish_reason", "length" } } } },
-                                      { "usage", { { "prompt_tokens", 5 }, { "completion_tokens", 7 }, { "total_tokens", 12 } } } };
-
-                    res->set_content(res_body.dump(4));
-                    res->end();
-                }
-                else
-                {
-
-                    struct gen_text_handler_t
-                    {
-                        int n_predicted_tokens;
-                        int n_predict;
-                        std::shared_ptr<http::response> res;
-
-                        int operator()(int rc, const std::string & text)
-                        {
-                            if (n_predicted_tokens > n_predict)
-                            {
-                                res->chunk_write_async("data: " + oai_make_stream(text, false, "length"));
-                                return -1;
-                            }
-                            if (rc == 0)
-                            {
-                                res->chunk_write_async("data: " + oai_make_stream(text, false));
-                                n_predicted_tokens++;
-                            }
-                            return 0;
-                        }
-                    } gen_text_hdl = { 0, xoptions_.n_predict, res };
-                    // start writing chunk
-                    res->event_source_start();
-                    chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
-                    res->chunk_end_async();
-                }
-            }
-        };
-
-        static auto completions_chat_handler = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "completions_chat_handler")
-                                      .c_str())
-            bool silent = false;
-
-            enum CHAT_TYPE
-            {
-                CHAT_TYPE_DEFAULT = 0,
-                CHAT_TYPE_STREAM  = 1
-            };
-
-            CHAT_TYPE chat_type = CHAT_TYPE_DEFAULT;
-
-            json body_ = json_parse(res->reqwest().body());
-            if (body_.empty())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Empty request body");
-
-            json messages_js = json_value(body_, "messages", json());
-            if (messages_js.empty())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Missing or empty messages");
-
-            if (body_ == json() or messages_js == json())
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON format");
-            }
-
-            chat_type = json_value(body_, "stream", bool(false)) == true ? CHAT_TYPE_STREAM : CHAT_TYPE_DEFAULT;
-
-            if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
-            {
-                // printf("[DEBUG] %s:%d \n", __func__, __LINE__);
-                try
-                {
-                    if (!res->get_session_data())
-                    {
-                        AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
-                                       res->reqwest().request_id());
-                        llama_context_ptr p = me_llama_context_init();
-                        if (p)
-                        {
-                            res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
-                        }
-                        else
-                            throw std::runtime_error("can not initalize context");
-                    }
-                } catch (const std::exception & e)
-                {
-                    AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
-                                   res->reqwest().request_id());
-                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
-                }
-
-                chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
-                GGML_ASSERT(nullptr != chat_session);
-
-                std::vector<llama_chat_message> chat_messages;
-                std::string prompt;
-
-                // extract promt
-                for (const auto & msg : messages_js)
-                {
-                    std::string role = (msg.contains("role") and msg.at("role").is_string()) ? msg.at("role") : "";
-                    if (role == "user" or role == "system" or role == "assistant")
-                    {
-                        std::string content = msg.at("content").get<std::string>();
-                        chat_messages.push_back({ strdup(role.c_str()), strdup(content.c_str()) });
-                    }
-                }
-
-                if (not silent)
-                    for (const auto & msg : chat_messages)
-                    {
-                        std::string content_str(msg.content ? msg.content : "");
-                        if (content_str.size() > 50)
-                            content_str = content_str.substr(0, 50);
-                        AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] %s: %s\n", res->session_id(), res->reqwest().request_id(),
-                                        msg.role, content_str.c_str());
-                    }
-
-                if (chat_type == CHAT_TYPE_DEFAULT)
-                { // default
-                    std::string res_body;
-                    auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                        if (rc == 0)
-                            res_body = res_body + text;
-
-                        return 0;
-                    };
-
-                    auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
-                    if (tokens.size() == 0)
-                    {
-                        HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
-                                                 "Tokenization failed - no tokens generated");
-                    }
-
-                    chat_session_get(*chat_session, tokens, get_text_hdl);
-                    res->set_content(res_body);
-                    res->end();
-                }
-                else
-                { // stream
-                    res->event_source_start();
-                    auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                        auto is_all_printable = [](const std::string & s) -> bool {
-                            return !std::any_of(s.begin(), s.end(), [](unsigned char c) { return !std::isprint(c); });
-                        };
-
-                        // TODO: why only pritable character
-                        if (rc == 0 and is_all_printable(text))
-                        {
-                            res->chunk_write_async("data: " + oai_make_stream(text));
-                        }
-
-                        return 0;
-                    };
-
-                    auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
-                    if (tokens.size() == 0)
-                    {
-                        HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
-                                                 "Tokenization failed - no tokens generated");
-                    }
-
-                    chat_session_get(*chat_session, tokens, get_text_hdl);
-
-                    res->chunk_end_async();
-                }
-            }
-            else
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Unsupported chat type");
-            }
-        };
-
-        static auto embedding_handler = [&](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "embedding_handler")
-                                      .c_str())
-            // sanity check
-            if (!model_embedding)
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Embedding model not available");
-            }
-            llama_model * model = model_embedding.get();
-
-            json body_js = json_parse(res->reqwest().body());
-
-            if (body_js.empty())
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid request content");
-            }
-
-            // fix: the sentence-level embedding
-            // context
-            llama_context_ptr ctx = [&]() {
-                llama_context_params cparams = common_context_params_to_llama(cparams_emb);
-                return llama_context_ptr(llama_init_from_model(model, cparams));
-            }();
-            GGML_ASSERT(ctx && "Can not initilize the context");
-            if (!ctx)
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize embedding context");
-            }
-
-            std::string input = json_value(body_js, "input", std::string());
-            if (input == "")
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Empty input text");
-            }
-            // tokenize the prompt
-            auto tokens = [&model, &data = input]() -> std::vector<llama_token> {
-                const llama_vocab * const vocab = llama_model_get_vocab(model);
-                GGML_ASSERT(vocab != nullptr);
-                int n_token = -llama_tokenize(vocab, data.data(), data.size(), NULL, 0, true, true);
-                std::vector<llama_token> tokens(n_token);
-                if (llama_tokenize(vocab, data.data(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
-                    return {};
-                return tokens;
-            }();
-            if (tokens.size() == 0)
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to tokenize input");
-
-            if (!silent)
-            {
-                const llama_vocab * const vocab = llama_model_get_vocab(model);
-                llama_token_print(vocab, tokens);
-            }
-
-            const uint64_t n_batch = cparams_emb.n_batch;
-            llama_batch batch      = llama_batch_init(n_batch, 0, 1);
-
-            for (int pos = 0; pos < tokens.size(); pos++)
-                common_batch_add(batch, tokens[pos], pos, { 0 }, true);
-
-            if (!silent)
-                llama_batch_print(&batch);
-
-            if (llama_decode(ctx.get(), batch) < 0)
-            {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to decode embedding batch");
-            }
-
-            int n_embd = llama_model_n_embd(model);
-            std::vector<float> embeddings(n_embd);
-
-            float * embd                         = llama_get_embeddings_seq(ctx.get(), 0);
-            float * const out                    = embeddings.data();
-            enum llama_pooling_type pooling_type = llama_pooling_type(ctx.get());
-            common_embd_normalize(embd, out, n_embd, cparams_emb.embd_normalize);
-            if (!silent)
-            {
-                for (int i = 0; i < std::min(3, n_embd); i++)
-                    printf("%.6f ", *(embeddings.data() + i));
-                printf("...");
-
-                for (int i = 0; i < n_embd && i < 2; i++)
-                    printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
-            }
-            json j = embeddings;
-            res->set_content(j.dump(4));
-            res->end();
-        };
-
-        // completion (it is only support stream, and non-stream)
-        route_.post("/completions", [](std::shared_ptr<http::response> res) { std::thread{ completions_handler, res }.detach(); });
-        route_.post("/v1/completions",
-                    [](std::shared_ptr<http::response> res) { std::thread{ completions_handler, res }.detach(); });
-        route_.post("/chat/completions",
-                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
-        route_.post("/v1/chat/completions",
-                    [](std::shared_ptr<http::response> res) { std::thread{ completions_chat_handler, res }.detach(); });
-
-        route_.post("/embeddings", [](std::shared_ptr<http::response> res) { embedding_handler(res); });
-        route_.post("/v1/embeddings", [](std::shared_ptr<http::response> res) { embedding_handler(res); });
-    }
-
-    // infill, fim
-    {
-        static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
-                                   &ctx_params](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "fim_handler")
-                                      .c_str())
-            bool silent               = true;
-            const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
-            if (!silent)
-                AVLLM_LOG_INFO("%s \n", res->reqwest().body().c_str());
-
-            // check model compatibility
-            std::string is_err = [&vocab]() -> std::string {
-                if (llama_vocab_fim_pre(vocab) == LLAMA_TOKEN_NULL)
-                {
-                    return "prefix token is missing. ";
-                }
-                if (llama_vocab_fim_suf(vocab) == LLAMA_TOKEN_NULL)
-                {
-                    return "suffix token is missing. ";
-                }
-                if (llama_vocab_fim_mid(vocab) == LLAMA_TOKEN_NULL)
-                {
-                    return "middle token is missing. ";
-                }
-                return "";
-            }();
-            if (not is_err.empty())
-            {
-                AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
-            }
-
-            json body_js;
-            [&body_js](const std::string & body) mutable {
-                try
-                {
-                    body_js = json::parse(body);
-                } catch (const std::exception & ex)
-                {
-                    body_js = {};
-                }
-            }(res->reqwest().body());
-
-            if (body_js == json())
-            { // not valid body_js
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON body");
-            }
-
-            is_err = [&body_js]() -> std::string {
-                if (body_js.contains("prompt") && !body_js.at("prompt").is_string())
-                    return "Do not accept the prompt (not string)";
-
-                if (!body_js.contains("input_prefix"))
-                    return R"("input_prefix" is required)";
-
-                if (!body_js.contains("input_suffix"))
-                    return R"("input_suffix" is required)";
-
-                // if (body_js.contains("input_extra") && !body_js.at("input_extra").is_array())
-                //    return "\"input_extra\" must be an array of {\"filename\": string, \"text\": string}";
-
-                return "";
-            }();
-
-            if (!is_err.empty())
-            {
-                AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
-            }
-
-            json input_extra = json_value(body_js, "input_extra", json::array());
-
-            [&input_extra]() -> std::string {
-                for (const auto & chunk : input_extra)
-                {
-                    // { "text": string, "filename": string }
-                    if (!chunk.contains("text") || !chunk.at("text").is_string())
-                        return "extra_context chunk must contain a \"text\" field with a string value";
-
-                    // filename is optional
-                    if (chunk.contains("filename") && !chunk.at("filename").is_string())
-                        return "extra_context chunk's \"filename\" field must be a string";
-                }
-                return "";
-            }();
-
-            body_js["input_extra"] = input_extra; // default to empty array if it's not exist
-
-            std::string prompt                          = json_value(body_js, "prompt", std::string());
-            std::vector<llama_tokens> tokenized_prompts = tokenize_input_prompts(vocab, prompt, false, true);
-
-            std::string input_suffix = body_js.at("input_suffix").get<std::string>();
-            std::string input_prefix = body_js.at("input_prefix").get<std::string>();
-
-            if (input_prefix.empty())
-            {
-                res->end();
-                AVLLM_LOG_WARN("%s \n", "input_prefix is empty");
-                return;
-            }
-
-            if (!silent)
-                AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
-
-            int n_predict   = json_value(body_js, "n_predict", 128);
-            int top_k       = json_value(body_js, "top_k", 40);
-            int top_p       = json_value(body_js, "top_p", 0.89);
-            int temperature = json_value(body_js, "temperature", 1.0f);
-            int32_t seed    = json_value(body_js, "seed", 4294967295);
-            json samplers   = json_value(body_js, "samplers", json::array());
-
-            auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), ctx_params.n_batch, n_predict,
-                                        ctx_params.n_ctx, false, tokenized_prompts[0]);
-            if (!silent)
-            {
-                llama_token_print(vocab, tokens);
-            }
-
+        }
+
+        std::string file_path;
+        std::string content_type;
+    };
+
+    static auto preflight = [](std::shared_ptr<http::response> res) {
+        res->set_header("Access-Control-Allow-Origin", res->reqwest().get_header("origin"));
+        res->set_header("Access-Control-Allow-Credentials", "true");
+        res->set_header("Access-Control-Allow-Methods", "POST");
+        res->set_header("Access-Control-Allow-Headers", "*");
+        res->set_content("", "text/html");
+        res->end();
+    };
+
+    static auto web_handler = [&](std::shared_ptr<http::response> res) -> void {
+        if (res->reqwest().get_header("accept-encoding").find("gzip") == std::string::npos)
+        {
+            res->set_content("Error: gzip is not supported by this browser", "text/plain");
+        }
+        else
+        {
+            res->set_header("Content-Encoding", "gzip");
+            // COEP and COOP headers, required by pyodide (python interpreter)
+            res->set_header("Cross-Origin-Embedder-Policy", "require-corp");
+            res->set_header("Cross-Origin-Opener-Policy", "same-origin");
+            res->set_content(reinterpret_cast<const char *>(av_llm::index_html_gz), av_llm::index_html_gz_len,
+                             "text/html; charset=utf-8");
+            // res->set_content(reinterpret_cast<std::>(index_html_gz), index_html_gz_len, "text/html; charset=utf-8");
+        }
+        res->end();
+    };
+
+    // oai - models
+    static auto handle_models = [](std::shared_ptr<http::response> res) {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "handle_models")
+                                  .c_str())
+
+        openai::ModelList models;
+        models.add_model(openai::Model("model-id-stuff", "model", static_cast<int64_t>(time(0)), "stuff-01"));
+
+        res->set_content(models.to_json().dump(4), MIMETYPE_JSON);
+        res->end();
+    };
+
+    static auto handle_model_detail = [](std::shared_ptr<http::response> res) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "handle_model")
+                                  .c_str())
+        std::string model_name = res->reqwest().get_param("model");
+        if (model_name.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Model is required");
+
+        openai::Model model_info;
+        model_info.object   = "model";
+        model_info.id       = model_name;
+        model_info.created  = std::time(0);
+        model_info.owned_by = "avbl llm";
+
+        // nlohmman json dump with pretty
+        res->set_content(model_info.to_json().dump(4), MIMETYPE_JSON);
+        res->end();
+    };
+
+    // oai (completions, chat completions, embedding)
+    static auto completions_handler = [&llama_context_init_from_ctx_params, &string_to_tokens,
+                                       &chat_session_get](std::shared_ptr<http::response> res) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "completions_handler")
+                                  .c_str())
+
+        bool silent = false;
+        json body_  = json_parse(res->reqwest().body());
+        if (body_.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
+
+        int max_tokens      = json_value(body_, "max_tokens", int(0));
+        std::string prompt  = json_value(body_, "prompt", std::string());
+        bool is_stream      = json_value(body_, "stream", bool(false));
+        int64_t temperature = json_value(body_, "temperature", int64_t(0));
+
+        if (not silent)
+            AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] max_tokens=%d, prompt=%s, is_stream=%d\n", res->session_id(),
+                            res->reqwest().request_id(), max_tokens, prompt.c_str(), is_stream);
+
+        {
             try
             {
                 if (!res->get_session_data())
                 {
-                    AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
-                    llama_context_ptr p = me_llama_context_init();
+                    AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
+                                   res->reqwest().request_id());
+
+                    llama_context_params ctx_params = llama_context_from_xoptions(xoptions_);
+                    ctx_params.n_ctx                = xoptions_.n_ctx;
+                    llama_context_ptr p             = llama_context_init_from_ctx_params(ctx_params);
+                    // print the context parameters
+                    if (not silent)
+                    {
+                    }
                     if (p)
+                    {
                         res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
+                    }
                     else
                         throw std::runtime_error("can not initalize context");
                 }
             } catch (const std::exception & e)
             {
-                AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
+                AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
+                               res->reqwest().request_id());
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
             }
 
             chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
+            GGML_ASSERT(nullptr != chat_session);
+
+            // tokenize the prompt
+            auto tokens = string_to_tokens(prompt);
 
             if (tokens.size() == 0)
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                         "Tokenization failed - no tokens generated");
+
+            if (not is_stream)
             {
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "No tokens generated");
-            }
 
-            std::string res_body;
-            int decoded       = 0;
-            auto get_text_hdl = [&](int rc, const std::string & text) -> int {
-                if (decoded++ > n_predict)
-                    return -1;
-                if (rc == 0)
-                    res_body = res_body + text;
-
-                return 0;
-            };
-
-            // sampler
-            // initialize the sampler
-            llama_sampler_ptr smpl_ = [&vocab, &top_k, &top_p, &seed]() {
-                auto sparams    = llama_sampler_chain_default_params();
-                sparams.no_perf = false;
-                auto smpl       = llama_sampler_chain_init(sparams);
-                llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
-                llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 20));
-                llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
-                return llama_sampler_ptr(smpl);
-            }();
-            if (!smpl_)
-            {
-                AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Could not create sampler");
-            }
-            if (!silent)
-            {
-                llama_sampler_print(smpl_.get());
-            }
-
-            {
-                chat_session_get_n(smpl_.get(), *chat_session, tokens, get_text_hdl);
-                json body_js;
-                body_js["content"] = res_body;
-                res->set_content(body_js.dump());
-                res->end();
-                return;
-            }
-        };
-
-        route_.post("/fim", [](std::shared_ptr<http::response> res) { std::thread{ fim_handler, res }.detach(); });
-        route_.post("/infill", [](std::shared_ptr<http::response> res) { std::thread{ fim_handler, res }.detach(); });
-    }
-
-    // Example of how to use the new async chunking API for streaming responses
-    {
-        static auto streaming_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
-                                         &ctx_params](std::shared_ptr<http::response> res) -> void {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "streaming_handler")
-                                      .c_str())
-
-            // Set up streaming response headers
-            res->set_header("Content-Type", "text/event-stream");
-            res->set_header("Cache-Control", "no-cache");
-            res->set_header("Connection", "keep-alive");
-            res->set_header("Access-Control-Allow-Origin", "*");
-
-            // Start chunked response
-            res->chunk_start_async([res](bool success) {
-                if (!success)
+                struct gen_text_handler_t
                 {
-                    AVLLM_LOG_ERROR("Failed to start chunked response");
-                    return;
-                }
+                    std::string gen_text;
+                    int n_predict;
 
-                // Example of streaming data
-                std::string chunk_data = "data: {\"content\": \"Hello\"}\n\n";
-                res->chunk_write_async(chunk_data, [res](bool success) {
-                    if (!success)
+                    int operator()(int rc, const std::string & text)
                     {
-                        AVLLM_LOG_ERROR("Failed to write chunk");
-                        return;
+                        if (gen_text.size() > n_predict)
+                            return -1;
+                        if (rc == 0)
+                            gen_text = gen_text + text;
+                        return 0;
                     }
 
-                    // Write another chunk
-                    std::string chunk_data2 = "data: {\"content\": \" World\"}\n\n";
-                    res->chunk_write_async(chunk_data2, [res](bool success) {
-                        if (!success)
+                } gen_text_hdl = { "", xoptions_.n_predict };
+
+                // Fixme: hardcode
+                chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
+                if (not silent)
+                    AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] gen_text=%s\n", res->session_id(), res->reqwest().request_id(),
+                                    gen_text_hdl.gen_text.c_str());
+
+                json res_body = { { "id", "cmpl-uqkvlQyYK7bGYrRHQ0eXlWi7" },
+                                  { "object", "text_completion" },
+                                  { "created", 1589478378 },
+                                  { "model", "qwen" },
+                                  { "system_fingerprint", "fp_44709d6fcb" },
+                                  { "choices",
+                                    { { { "text", gen_text_hdl.gen_text },
+                                        { "index", 0 },
+                                        { "logprobs", nullptr },
+                                        { "finish_reason", "length" } } } },
+                                  { "usage", { { "prompt_tokens", 5 }, { "completion_tokens", 7 }, { "total_tokens", 12 } } } };
+
+                res->set_content(res_body.dump(4));
+                res->end();
+            }
+            else
+            {
+
+                struct gen_text_handler_t
+                {
+                    int n_predicted_tokens;
+                    int n_predict;
+                    std::shared_ptr<http::response> res;
+
+                    int operator()(int rc, const std::string & text)
+                    {
+                        if (n_predicted_tokens > n_predict)
                         {
-                            AVLLM_LOG_ERROR("Failed to write second chunk");
-                            return;
+                            res->chunk_write_async("data: " + oai_make_stream(text, false, "length"));
+                            return -1;
                         }
+                        if (rc == 0)
+                        {
+                            res->chunk_write_async("data: " + oai_make_stream(text, false));
+                            n_predicted_tokens++;
+                        }
+                        return 0;
+                    }
+                } gen_text_hdl = { 0, xoptions_.n_predict, res };
+                // start writing chunk
+                res->event_source_start();
+                chat_session_get(*chat_session, tokens, std::ref(gen_text_hdl));
+                res->chunk_end_async();
+            }
+        }
+    };
 
-                        // End the streaming response
-                        res->chunk_end_async([](bool success) {
-                            if (!success)
-                            {
-                                AVLLM_LOG_ERROR("Failed to end chunked response");
-                            }
-                        });
-                    });
-                });
-            });
+    static auto chat_completions_handler = [&me_llama_context_init, &chat_template_to_tokens,
+                                            &chat_session_get](std::shared_ptr<http::response> res) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "chat_completions_handler")
+                                  .c_str())
+        bool silent = false;
+
+        enum CHAT_TYPE
+        {
+            CHAT_TYPE_DEFAULT = 0,
+            CHAT_TYPE_STREAM  = 1
         };
 
-        route_.post("/stream", [](std::shared_ptr<http::response> res) { std::thread{ streaming_handler, res }.detach(); });
-    }
+        CHAT_TYPE chat_type = CHAT_TYPE_DEFAULT;
 
-    {
-        // health handler
-        static auto health_handler = [](std::shared_ptr<http::response> res) {
-            AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                        res->reqwest().request_id(), "health_handler")
-                                      .c_str())
-            res->set_header("Content-Type", "application/json");
-            json body;
-            body["status"]  = "OK";
-            body["name"]    = "av_llm";
-            body["version"] = "0.0.1-Preview";
-            body["uptime"]  = 0;
-            res->set_content(body.dump());
+        json body_ = json_parse(res->reqwest().body());
+        if (body_.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Empty request body");
+
+        json messages_js = json_value(body_, "messages", json());
+        if (messages_js.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Missing or empty messages");
+
+        if (body_ == json() or messages_js == json())
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON format");
+        }
+
+        chat_type = json_value(body_, "stream", bool(false)) == true ? CHAT_TYPE_STREAM : CHAT_TYPE_DEFAULT;
+
+        if (chat_type == CHAT_TYPE_DEFAULT or chat_type == CHAT_TYPE_STREAM)
+        {
+            // printf("[DEBUG] %s:%d \n", __func__, __LINE__);
+            try
+            {
+                if (!res->get_session_data())
+                {
+                    AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
+                                   res->reqwest().request_id());
+                    llama_context_ptr p = me_llama_context_init();
+                    if (p)
+                    {
+                        res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
+                    }
+                    else
+                        throw std::runtime_error("can not initalize context");
+                }
+            } catch (const std::exception & e)
+            {
+                AVLLM_LOG_WARN("[%05" PRIu64 "] [%05" PRIu64 "] can not initialize the context \n", res->session_id(),
+                               res->reqwest().request_id());
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
+            }
+
+            chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
+            GGML_ASSERT(nullptr != chat_session);
+
+            std::vector<llama_chat_message> chat_messages;
+            std::string prompt;
+
+            // extract promt
+            for (const auto & msg : messages_js)
+            {
+                std::string role = (msg.contains("role") and msg.at("role").is_string()) ? msg.at("role") : "";
+                if (role == "user" or role == "system" or role == "assistant")
+                {
+                    std::string content = msg.at("content").get<std::string>();
+                    chat_messages.push_back({ strdup(role.c_str()), strdup(content.c_str()) });
+                }
+            }
+
+            if (not silent)
+                for (const auto & msg : chat_messages)
+                {
+                    std::string content_str(msg.content ? msg.content : "");
+                    if (content_str.size() > 50)
+                        content_str = content_str.substr(0, 50);
+                    AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] %s: %s\n", res->session_id(), res->reqwest().request_id(),
+                                    msg.role, content_str.c_str());
+                }
+
+            if (chat_type == CHAT_TYPE_DEFAULT)
+            { // default
+                std::string res_body;
+                auto get_text_hdl = [&](int rc, const std::string & text) -> int {
+                    if (rc == 0)
+                        res_body = res_body + text;
+
+                    return 0;
+                };
+
+                auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
+                if (tokens.size() == 0)
+                {
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                             "Tokenization failed - no tokens generated");
+                }
+
+                chat_session_get(*chat_session, tokens, get_text_hdl);
+                res->set_content(res_body);
+                res->end();
+            }
+            else
+            { // stream
+                res->event_source_start();
+                auto get_text_hdl = [&](int rc, const std::string & text) -> int {
+                    auto is_all_printable = [](const std::string & s) -> bool {
+                        return !std::any_of(s.begin(), s.end(), [](unsigned char c) { return !std::isprint(c); });
+                    };
+
+                    // TODO: why only pritable character
+                    if (rc == 0 and is_all_printable(text))
+                    {
+                        res->chunk_write_async("data: " + oai_make_stream(text));
+                    }
+
+                    return 0;
+                };
+
+                auto tokens = chat_template_to_tokens(*chat_session, chat_messages);
+                if (tokens.size() == 0)
+                {
+                    HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                             "Tokenization failed - no tokens generated");
+                }
+
+                chat_session_get(*chat_session, tokens, get_text_hdl);
+
+                res->chunk_end_async();
+            }
+        }
+        else
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Unsupported chat type");
+        }
+    };
+
+    auto embedding_handler = [&model_embedding](std::shared_ptr<http::response> res) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "embedding_handler")
+                                  .c_str())
+        bool silent = true;
+        // sanity check
+        if (!model_embedding)
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Embedding model not available");
+        }
+        llama_model * model = model_embedding.get();
+
+        json body_js = json_parse(res->reqwest().body());
+
+        if (body_js.empty())
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid request content");
+        }
+
+        // fix: the sentence-level embedding
+        // context
+        llama_context_ptr ctx = [&]() {
+            llama_context_params cparams = common_context_params_to_llama(cparams_emb);
+            return llama_context_ptr(llama_init_from_model(model, cparams));
+        }();
+        GGML_ASSERT(ctx && "Can not initilize the context");
+        if (!ctx)
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize embedding context");
+        }
+
+        std::string input = json_value(body_js, "input", std::string());
+        if (input == "")
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Empty input text");
+        }
+        // tokenize the prompt
+        auto tokens = [&model, &data = input]() -> std::vector<llama_token> {
+            const llama_vocab * const vocab = llama_model_get_vocab(model);
+            GGML_ASSERT(vocab != nullptr);
+            int n_token = -llama_tokenize(vocab, data.data(), data.size(), NULL, 0, true, true);
+            std::vector<llama_token> tokens(n_token);
+            if (llama_tokenize(vocab, data.data(), data.size(), tokens.data(), tokens.size(), true, true) < 0)
+                return {};
+            return tokens;
+        }();
+        if (tokens.size() == 0)
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to tokenize input");
+
+        if (!silent)
+        {
+            const llama_vocab * const vocab = llama_model_get_vocab(model);
+            llama_token_print(vocab, tokens);
+        }
+
+        const uint64_t n_batch = cparams_emb.n_batch;
+        llama_batch batch      = llama_batch_init(n_batch, 0, 1);
+
+        for (int pos = 0; pos < tokens.size(); pos++)
+            common_batch_add(batch, tokens[pos], pos, { 0 }, true);
+
+        if (!silent)
+            llama_batch_print(&batch);
+
+        if (llama_decode(ctx.get(), batch) < 0)
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to decode embedding batch");
+        }
+
+        int n_embd = llama_model_n_embd(model);
+        std::vector<float> embeddings(n_embd);
+
+        float * embd                         = llama_get_embeddings_seq(ctx.get(), 0);
+        float * const out                    = embeddings.data();
+        enum llama_pooling_type pooling_type = llama_pooling_type(ctx.get());
+        common_embd_normalize(embd, out, n_embd, cparams_emb.embd_normalize);
+        if (!silent)
+        {
+            for (int i = 0; i < std::min(3, n_embd); i++)
+                printf("%.6f ", *(embeddings.data() + i));
+            printf("...");
+
+            for (int i = 0; i < n_embd && i < 2; i++)
+                printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
+        }
+        json j = embeddings;
+        res->set_content(j.dump(4));
+        res->end();
+    };
+
+    // infill, fim
+    static auto fim_handler = [&me_llama_context_init, &chat_session_get_n, &model_general,
+                               &ctx_params](std::shared_ptr<http::response> res) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "fim_handler")
+                                  .c_str())
+        bool silent               = true;
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
+        if (!silent)
+            AVLLM_LOG_INFO("%s \n", res->reqwest().body().c_str());
+
+        // check model compatibility
+        std::string is_err = [&vocab]() -> std::string {
+            if (llama_vocab_fim_pre(vocab) == LLAMA_TOKEN_NULL)
+            {
+                return "prefix token is missing. ";
+            }
+            if (llama_vocab_fim_suf(vocab) == LLAMA_TOKEN_NULL)
+            {
+                return "suffix token is missing. ";
+            }
+            if (llama_vocab_fim_mid(vocab) == LLAMA_TOKEN_NULL)
+            {
+                return "middle token is missing. ";
+            }
+            return "";
+        }();
+        if (not is_err.empty())
+        {
+            AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
+        }
+
+        json body_js;
+        [&body_js](const std::string & body) mutable {
+            try
+            {
+                body_js = json::parse(body);
+            } catch (const std::exception & ex)
+            {
+                body_js = {};
+            }
+        }(res->reqwest().body());
+
+        if (body_js == json())
+        { // not valid body_js
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid JSON body");
+        }
+
+        is_err = [&body_js]() -> std::string {
+            if (body_js.contains("prompt") && !body_js.at("prompt").is_string())
+                return "Do not accept the prompt (not string)";
+
+            if (!body_js.contains("input_prefix"))
+                return R"("input_prefix" is required)";
+
+            if (!body_js.contains("input_suffix"))
+                return R"("input_suffix" is required)";
+
+            // if (body_js.contains("input_extra") && !body_js.at("input_extra").is_array())
+            //    return "\"input_extra\" must be an array of {\"filename\": string, \"text\": string}";
+
+            return "";
+        }();
+
+        if (!is_err.empty())
+        {
+            AVLLM_LOG_WARN("%s: %s \n", __func__, is_err.c_str());
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, is_err);
+        }
+
+        json input_extra = json_value(body_js, "input_extra", json::array());
+
+        [&input_extra]() -> std::string {
+            for (const auto & chunk : input_extra)
+            {
+                // { "text": string, "filename": string }
+                if (!chunk.contains("text") || !chunk.at("text").is_string())
+                    return "extra_context chunk must contain a \"text\" field with a string value";
+
+                // filename is optional
+                if (chunk.contains("filename") && !chunk.at("filename").is_string())
+                    return "extra_context chunk's \"filename\" field must be a string";
+            }
+            return "";
+        }();
+
+        body_js["input_extra"] = input_extra; // default to empty array if it's not exist
+
+        std::string prompt                          = json_value(body_js, "prompt", std::string());
+        std::vector<llama_tokens> tokenized_prompts = tokenize_input_prompts(vocab, prompt, false, true);
+
+        std::string input_suffix = body_js.at("input_suffix").get<std::string>();
+        std::string input_prefix = body_js.at("input_prefix").get<std::string>();
+
+        if (input_prefix.empty())
+        {
             res->end();
+            AVLLM_LOG_WARN("%s \n", "input_prefix is empty");
+            return;
+        }
+
+        if (!silent)
+            AVLLM_LOG_INFO("prefix:\n%s\nsuffix:\n%s\n", input_prefix.c_str(), input_suffix.c_str());
+
+        int n_predict   = json_value(body_js, "n_predict", 128);
+        int top_k       = json_value(body_js, "top_k", 40);
+        int top_p       = json_value(body_js, "top_p", 0.89);
+        int temperature = json_value(body_js, "temperature", 1.0f);
+        int32_t seed    = json_value(body_js, "seed", 4294967295);
+        json samplers   = json_value(body_js, "samplers", json::array());
+
+        auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), ctx_params.n_batch, n_predict,
+                                    ctx_params.n_ctx, false, tokenized_prompts[0]);
+        if (!silent)
+        {
+            llama_token_print(vocab, tokens);
+        }
+
+        try
+        {
+            if (!res->get_session_data())
+            {
+                AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
+                llama_context_ptr p = me_llama_context_init();
+                if (p)
+                    res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
+                else
+                    throw std::runtime_error("can not initalize context");
+            }
+        } catch (const std::exception & e)
+        {
+            AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
+        }
+
+        chat_session_t * chat_session = static_cast<chat_session_t *>(res->get_session_data().get());
+
+        if (tokens.size() == 0)
+        {
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "No tokens generated");
+        }
+
+        std::string res_body;
+        int decoded       = 0;
+        auto get_text_hdl = [&](int rc, const std::string & text) -> int {
+            if (decoded++ > n_predict)
+                return -1;
+            if (rc == 0)
+                res_body = res_body + text;
+
+            return 0;
         };
 
-        //
-        route_.get("health", health_handler);
-    }
+        // sampler
+        // initialize the sampler
+        llama_sampler_ptr smpl_ = [&vocab, &top_k, &top_p, &seed]() {
+            auto sparams    = llama_sampler_chain_default_params();
+            sparams.no_perf = false;
+            auto smpl       = llama_sampler_chain_init(sparams);
+            llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
+            llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 20));
+            llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
+            return llama_sampler_ptr(smpl);
+        }();
+        if (!smpl_)
+        {
+            AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Could not create sampler");
+        }
+        if (!silent)
+        {
+            llama_sampler_print(smpl_.get());
+        }
 
-    // registered route by post, get, ..
-    // get        /
-    // get        /index.html
-    //
-    // get				/models
-    // get 				/v1/models
-    //
-    // post 			/completions
-    // post 			/v1/completions
-    // post				/v1/chat/completions
-    //
-    // post 			/infill
-    // post 			/fim
-    //
-    // get 				/health
+        {
+            chat_session_get_n(smpl_.get(), *chat_session, tokens, get_text_hdl);
+            json body_js;
+            body_js["content"] = res_body;
+            res->set_content(body_js.dump());
+            res->end();
+            return;
+        }
+    };
 
-    AVLLM_LOG_INFO("Server is started at http://127.0.0.1:%d\n", xoptions_.port);
+    // health handler
+    static auto health_handler = [](std::shared_ptr<http::response> res) {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "health_handler")
+                                  .c_str())
+        res->set_header("Content-Type", "application/json");
+        json body;
+        body["status"]  = "OK";
+        body["name"]    = "av_llm";
+        body["version"] = "0.0.1-Preview";
+        body["uptime"]  = 0;
+        res->set_content(body.dump());
+        res->end();
+    };
+
+    auto async_thread_wrapper = [&model_general](std::function<void(std::shared_ptr<http::response>)> func_) {
+        return [func_, &model_general](std::shared_ptr<http::response> res) {
+            if (!model_general)
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                         "not suppport. the model is not inialized as request");
+            std::thread(func_, res).detach();
+        };
+    };
+
+    auto embedding_model_handler = [&model_embedding, &embedding_handler](std::shared_ptr<http::response> res) {
+        if (!model_embedding)
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                     "not support. the model is not inialized as request");
+        embedding_handler(res);
+    };
+
+    // clang-format off
+    // web
+    route_.set_option_handler(preflight);
+    route_.get("/",                      std::ref(web_handler));
+    route_.get("/index.html",            std::ref(web_handler));
+    // oai - model
+    route_.get("/models",                std::ref(handle_models));
+    route_.get("/v1/models",             std::ref(handle_models));
+    route_.get("/models/{model}",        std::ref(handle_model_detail));
+    route_.get("/v1/models/{model}",     std::ref(handle_model_detail));
+    // oai - completions
+    route_.post("/completions",          async_thread_wrapper(std::ref(completions_handler)));
+    route_.post("/v1/completions",       async_thread_wrapper(std::ref(completions_handler)));
+    // oai - chat completions
+    route_.post("/chat/completions",     async_thread_wrapper(std::ref(chat_completions_handler)));
+    route_.post("/v1/chat/completions",  async_thread_wrapper(std::ref(chat_completions_handler)));
+		// oai - embeddings
+    route_.post("/embeddings",           std::ref(embedding_model_handler));
+    route_.post("/v1/embeddings",        std::ref(embedding_model_handler));
+		// infill, fim (fill-in-middle)
+    route_.post("/fim",                  async_thread_wrapper(std::ref(fim_handler)));
+    route_.post("/infill",               async_thread_wrapper(std::ref(fim_handler)));
+		// health
+    route_.get("health", std::ref(health_handler));
+    // clang-format on
+
+    AVLLM_LOG_INFO("Server can be accessed at http://127.0.0.1:%d\n", xoptions_.port);
 
     http::start_server(xoptions_.port, route_);
 
