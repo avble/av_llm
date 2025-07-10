@@ -9,10 +9,18 @@
 - Demo Code Completion: [document](./docs/model.md), search for code completion
 
 ## What it has?
-### Lightweight OpenAI compatible server
+### C++ server for serving LLM inference
 <details>
  <summary>
-[Endpoint] Create Chat completion
+[Endpoint][open-ai] Completions
+  </summary>
+ 
+   - [x] Default
+   - [x] stream
+</details>
+<details>
+ <summary>
+[Endpoint][open-ai] Chat completions
   </summary>
  
    - [x] Default
