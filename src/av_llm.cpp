@@ -26,6 +26,7 @@ namespace av_llm {
 #include <inttypes.h>
 
 #include <chrono>
+#include <condition_variable>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -37,6 +38,7 @@ namespace av_llm {
 #include <regex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -53,6 +55,23 @@ namespace av_llm {
 #ifdef _MSC_VER
 #include <ciso646>
 #endif
+
+// console color
+// Text color
+#define CONSOLE_COLOR_BLACK "\033[30m"
+#define CONSOLE_COLOR_RED "\033[31m"
+#define CONSOLE_COLOR_GREEN "\033[32m"
+#define CONSOLE_COLOR_YELLOW "\033[33m"
+#define CONSOLE_COLOR_BLUE "\033[34m"
+#define CONSOLE_COLOR_MAGENTA "\033[35m"
+#define CONSOLE_COLOR_CYAN "\033[36m"
+#define CONSOLE_COLOR_WHITE "\033[37m"
+
+// Bold text
+#define CONSOLE_BOLD "\033[1m"
+
+// Reset all attributes
+#define CONSOLE_RESET "\033[0m"
 
 // prototype
 static void model_cmd_handler(std::string sub_cmd);
@@ -80,6 +99,16 @@ int main(int argc, char ** argv)
 #endif
     }
 
+#ifdef NDEBUG
+    llama_log_set(
+        [](enum ggml_log_level level, const char * text, void * /* user_data */) {
+            if (level >= GGML_LOG_LEVEL_DEBUG)
+            {
+                fprintf(stderr, "%s", text);
+            }
+        },
+        nullptr);
+#endif
     if (home_path.empty())
     {
         AVLLM_LOG_ERROR("%s: \n", "could not find the homepath");
@@ -91,12 +120,10 @@ int main(int argc, char ** argv)
 
     pre_config_model_init();
 
-    auto process_chat_or_serve = [](std::function<void(std::string)> chat_or_serve_func) -> int { // handle the syntax
+    auto execute_char_or_serve = [](std::function<void(std::string)> chat_or_serve_func) -> int { // handle the syntax
         if (xoptions_.model_url_or_alias != "")
         {
             {
-                // process if the .gguf file
-                // AVLLM_LOG_DEBUG("%s:%d - %s \n", __func__, __LINE__, xoptions_.model_url_or_alias.c_str());
                 std::filesystem::path model_filename = xoptions_.model_url_or_alias;
                 if (model_filename.extension() == ".gguf")
                 {
@@ -167,7 +194,7 @@ int main(int argc, char ** argv)
 
     //
     app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
-    app.add_option("--n_predict", xoptions_.n_predict, "Number of predict")->default_val(std::to_string(xoptions_.n_predict));
+    app.add_option("--npredict", xoptions_.n_predict, "Number of predict")->default_val(std::to_string(xoptions_.n_predict));
 
     // sampling options
     app.add_option("--repeat-penalty", xoptions_.repeat_penalty, "Reapeat penanty")
@@ -233,13 +260,13 @@ int main(int argc, char ** argv)
     // ---- CHAT logic ----
     if (*chat)
     {
-        process_chat_or_serve(chat_cmd_handler);
+        execute_char_or_serve(chat_cmd_handler);
         return 0;
     }
     // ---- SERVE logic ----
     if (*serve)
     {
-        process_chat_or_serve(server_cmd_handler);
+        execute_char_or_serve(server_cmd_handler);
         return 0;
     }
 
@@ -253,7 +280,7 @@ int main(int argc, char ** argv)
 #if 0
     if (argc > 1)
     {
-        process_chat_or_serve(argv[1], chat_cmd_handler);
+        execute_char_or_serve(argv[1], chat_cmd_handler);
     }
 #endif
 
@@ -379,6 +406,7 @@ static void chat_cmd_handler(std::filesystem::path model_path)
     }
     if (!silent)
     {
+        AVLLM_LOG_DEBUG("%s", "sampler:\n");
         llama_sampler_print(smpl.get());
     }
 
@@ -537,7 +565,11 @@ public:
 void server_cmd_handler(std::filesystem::path model_path)
 {
 
+#ifdef NDEBUG
+    bool silent = true;
+#else
     bool silent = false;
+#endif
     llama_model_ptr model_general;
     common_chat_templates_ptr chat_templates;
     llama_sampler_ptr smpl_ptr;
@@ -558,7 +590,10 @@ void server_cmd_handler(std::filesystem::path model_path)
             AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
         }
         else
+        {
             model_general = std::move(model);
+            AVLLM_LOG_INFO("%20s:%s\n", "model path", model_path.generic_string().c_str());
+        }
 
         // chat template
         chat_templates = [&]() {
@@ -578,9 +613,9 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
             if (!silent)
             {
-                AVLLM_LOG_INFO("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
-                AVLLM_LOG_INFO("%s: chat example: %s \n", __func__,
-                               common_chat_format_example(chat_templates.get(), false).c_str());
+                AVLLM_LOG_DEBUG("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates.get()));
+                AVLLM_LOG_DEBUG("%s: chat example: %s \n", __func__,
+                                common_chat_format_example(chat_templates.get(), false).c_str());
             }
 
             return chat_templates;
@@ -602,6 +637,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
         if (!silent)
         {
+            AVLLM_LOG_DEBUG("%s", "sampler:\n");
             llama_sampler_print(smpl_ptr.get());
         }
     }
@@ -663,9 +699,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
 
             std::string out(buf, n);
-            // for (int i = 0; i < n; i++)
-            //     printf("0x%04X, ", static_cast<unsigned char>(buf[i]));
-            // printf("\n");
+            // AVLLM_LOG_TRACE("%s", out.c_str());
 
             if (func_(0, out) < 0)
             {
@@ -768,8 +802,6 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
     }
 
-    http::route route_;
-
     // embedded web
     // legacy api
     struct handle_static_file
@@ -865,9 +897,12 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "completions_handler")
                                   .c_str())
-
+#ifdef NDEBUG
+        bool silent = true;
+#else
         bool silent = false;
-        json body_  = json_parse(res->reqwest().body());
+#endif
+        json body_ = json_parse(res->reqwest().body());
         if (body_.empty())
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
 
@@ -996,7 +1031,11 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "chat_completions_handler")
                                   .c_str())
+#ifdef NDEBUG
+        bool silent = true;
+#else
         bool silent = false;
+#endif
 
         enum CHAT_TYPE
         {
@@ -1030,6 +1069,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 {
                     AVLLM_LOG_INFO("[%05" PRIu64 "] [%05" PRIu64 "] initialize context \n", res->session_id(),
                                    res->reqwest().request_id());
+                    AVLLM_LOG_INFO("%20s:%d", "number of context", xoptions_.n_ctx);
                     llama_context_ptr p = me_llama_context_init();
                     if (p)
                     {
@@ -1132,7 +1172,11 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "embedding_handler")
                                   .c_str())
+#ifdef NDEBUG
         bool silent = true;
+#else
+        bool silent = false;
+#endif
         // sanity check
         if (!model_embedding)
         {
@@ -1224,7 +1268,11 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "fim_handler")
                                   .c_str())
-        bool silent               = true;
+#ifdef NDEBUG
+        bool silent = true;
+#else
+        bool silent = false;
+#endif
         const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
         if (!silent)
             AVLLM_LOG_INFO("%s \n", res->reqwest().body().c_str());
@@ -1342,6 +1390,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (!res->get_session_data())
             {
                 AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
+                AVLLM_LOG_INFO("%20s:%d", "number of context", xoptions_.n_ctx);
                 llama_context_ptr p = me_llama_context_init();
                 if (p)
                     res->get_session_data() = std::make_unique<chat_session_t>(std::move(p));
@@ -1390,6 +1439,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
         if (!silent)
         {
+            AVLLM_LOG_DEBUG("%s", "sampler:\n");
             llama_sampler_print(smpl_.get());
         }
 
@@ -1427,6 +1477,66 @@ void server_cmd_handler(std::filesystem::path model_path)
         };
     };
 
+    // thread-pool
+    struct thread_pool
+    {
+        using function_handler = std::function<void(std::shared_ptr<http::response> &)>;
+        using task             = std::tuple<function_handler, std::shared_ptr<http::response>>;
+        std::queue<task> tasks;
+
+        std::condition_variable cv;
+        std::mutex mutex;
+    } thread_pool_;
+
+    std::atomic<int> thread_worker_cnt(0);
+    auto thread_worker = [&thread_pool_, &thread_worker_cnt]() {
+        int identifier = thread_worker_cnt++;
+        while (true)
+        {
+            thread_pool::task task_;
+            {
+                // if queue is empty, wait. Otherwise, process
+                // acquire lock
+                std::unique_lock lk(thread_pool_.mutex);
+                if (thread_pool_.tasks.empty())
+                    thread_pool_.cv.wait(lk);
+                task_ = thread_pool_.tasks.front();
+                thread_pool_.tasks.pop();
+            }
+
+            auto func_ = std::get<0>(task_);
+            auto res_  = std::get<1>(task_);
+
+            auto start = std::chrono::high_resolution_clock::now();
+            // printf("%s", CONSOLE_COLOR_BLUE);
+            AVLLM_LOG_INFO("[%05d][%3d]%20s:%s\n", res_->session_id(), identifier, "thread_worker", "Procesing...");
+            // printf("%s", CONSOLE_RESET);
+            func_(res_);
+            auto end      = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+            AVLLM_LOG_INFO("[%5d][%3d]%20s:%lld (ms)\n", res_->session_id(), identifier, "duration", duration);
+            // printf("%s", CONSOLE_COLOR_BLUE);
+            AVLLM_LOG_INFO("[%05d][%3d]%20s:%s\n", res_->session_id(), identifier, "thread_worker", "END");
+            // printf("%s", CONSOLE_RESET);
+        }
+    };
+
+    auto async_thread_pool_wrapper = [&model_general, &thread_pool_](std::function<void(std::shared_ptr<http::response>)> func_) {
+        return [func_, &model_general, &thread_pool_](std::shared_ptr<http::response> res) {
+            if (!model_general)
+                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
+                                         "not suppport. the model is not inialized as request");
+
+            {
+                std::lock_guard lk(thread_pool_.mutex);
+                thread_pool_.tasks.push(thread_pool::task(func_, res));
+            }
+
+            thread_pool_.cv.notify_one();
+        };
+    };
+
     auto embedding_model_handler = [&model_embedding, &embedding_handler](std::shared_ptr<http::response> res) {
         if (!model_embedding)
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
@@ -1434,6 +1544,11 @@ void server_cmd_handler(std::filesystem::path model_path)
         embedding_handler(res);
     };
 
+    std::vector<std::thread> tp;
+    tp.emplace_back(thread_worker);
+    // tp.emplace_back(thread_worker);
+
+    http::route route_;
     // clang-format off
     // web
     route_.set_option_handler(preflight);
@@ -1445,17 +1560,17 @@ void server_cmd_handler(std::filesystem::path model_path)
     route_.get("/models/{model}",        std::ref(handle_model_detail));
     route_.get("/v1/models/{model}",     std::ref(handle_model_detail));
     // oai - completions
-    route_.post("/completions",          async_thread_wrapper(std::ref(completions_handler)));
-    route_.post("/v1/completions",       async_thread_wrapper(std::ref(completions_handler)));
+    route_.post("/completions",          async_thread_pool_wrapper(std::ref(completions_handler)));
+    route_.post("/v1/completions",       async_thread_pool_wrapper(std::ref(completions_handler)));
     // oai - chat completions
-    route_.post("/chat/completions",     async_thread_wrapper(std::ref(chat_completions_handler)));
-    route_.post("/v1/chat/completions",  async_thread_wrapper(std::ref(chat_completions_handler)));
+    route_.post("/chat/completions",     async_thread_pool_wrapper(std::ref(chat_completions_handler)));
+    route_.post("/v1/chat/completions",  async_thread_pool_wrapper(std::ref(chat_completions_handler)));
 		// oai - embeddings
     route_.post("/embeddings",           std::ref(embedding_model_handler));
     route_.post("/v1/embeddings",        std::ref(embedding_model_handler));
 		// infill, fim (fill-in-middle)
-    route_.post("/fim",                  async_thread_wrapper(std::ref(fim_handler)));
-    route_.post("/infill",               async_thread_wrapper(std::ref(fim_handler)));
+    route_.post("/fim",                  async_thread_pool_wrapper(std::ref(fim_handler)));
+    route_.post("/infill",               async_thread_pool_wrapper(std::ref(fim_handler)));
 		// health
     route_.get("health", std::ref(health_handler));
     // clang-format on
@@ -1464,5 +1579,5 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     http::start_server(xoptions_.port, route_);
 
-    // llama_model_free(model);
+    for_each(tp.begin(), tp.end(), [](std::thread & th) { th.join(); });
 };
