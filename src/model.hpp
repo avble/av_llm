@@ -1,5 +1,5 @@
 #ifndef _AVLLM_MODEL_H_
-#define _AVLLM_MODDEL_H_
+#define _AVLLM_MODEL_H_
 
 #include <string>
 #include <unordered_map>

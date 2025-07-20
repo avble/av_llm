@@ -1,10 +1,8 @@
 #ifndef _AVLLM_UTILS_H_
 #define _AVLLM_UTILS_H_
 
-// #include "_deps/llama_cpp-src/src/llama-vocab.h"
 #include "common.h"
 #include "llama.h"
-#include "log.h"
 
 #include "log.hpp"
 
@@ -16,7 +14,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -29,6 +26,7 @@ struct xoptions
     xoptions()
     {
         n_predict = 1024;
+        jinja     = false; // not use jinja template
 
         repeat_penalty = 1.0;
 
@@ -40,6 +38,7 @@ struct xoptions
     }
 
     int n_predict;
+    bool jinja; // jinja template
 
     // sampling
     double repeat_penalty;
@@ -57,22 +56,41 @@ struct xoptions
 };
 
 // oai
-static std::string oai_make_stream(std::string data, bool is_chat = true, std::optional<std::string> finish_reason = std::nullopt)
+static std::string oai_make_chunk(const std::string & model, std::string data, bool is_chat = true,
+                                  std::optional<std::string> finish_reason = std::nullopt)
 {
-    nlohmann::json js{ { "id", "chatcmpl-123" },
+    std::string random_id = "chatcmpl-" + std::to_string(std::time(0)) + std::to_string(rand() % 10000);
+
+    nlohmann::json js{ { "id", random_id },
                        { "object", is_chat ? "chat.completion.chunk" : "text_completion" },
                        { "created", std::time(0) },
-                       { "model", "gpt-4o-mini" },
+                       { "model", model },
                        { "system_fingerprint", "fp_44709d6fcb" },
                        { "choices",
                          { { { "index", 0 },
                              is_chat ? nlohmann::json{ "delta", { { "role", "assistant" }, { "content", data } } }
-                                     : nlohmann::json{ "text", data },
-                             { "logprobs", nullptr },
-                             { "finish_reason", finish_reason.value_or("none") } } } } };
+                                     : nlohmann::json{ "text", data } } } } };
+    auto & choices = js["choices"][0];
+    if (finish_reason.has_value())
+        choices["finish_reason"] = finish_reason.value();
+    else
+        choices["finish_reason"] = nullptr;
 
     return js.dump() + "\n\n";
 };
+
+// oai chunk (completion)
+static std::string oai_chat_completion_chunk(const std::string & model_, std::string data,
+                                             std::optional<std::string> finish_reason = std::nullopt)
+{
+    return oai_make_chunk(model_, data, true, finish_reason);
+};
+
+static std::string oai_completion_chunk(const std::string & model_, std::string data,
+                                        std::optional<std::string> finish_reason = std::nullopt)
+{
+    return oai_make_chunk(model_, data, false, finish_reason);
+}
 
 // av_connect helper
 #define HTTP_SEND_RES_AND_RETURN(res, status, message)                                                                             \
@@ -95,7 +113,7 @@ static std::string oai_make_stream(std::string data, bool is_chat = true, std::o
 // string
 namespace av_llm {
 // avoid conflict definition elsewhere
-std::string string_format(const char * fmt, ...)
+static std::string string_format(const char * fmt, ...)
 {
     va_list ap;
     va_list ap2;
@@ -111,6 +129,20 @@ std::string string_format(const char * fmt, ...)
     return std::string(buf.data(), size);
 }
 } // namespace av_llm
+
+static std::string string_generate_random(int length)
+{
+    std::string result;
+    result.reserve(length);
+    static const char alphanum[] = "0123456789"
+                                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                   "abcdefghijklmnopqrstuvwxyz";
+    for (int i = 0; i < length; ++i)
+    {
+        result += alphanum[rand() % (sizeof(alphanum) - 1)];
+    }
+    return result;
+}
 
 // json
 static bool json_is_array_of_numbers(const json & data)
@@ -187,7 +219,7 @@ static json json_parse(const T & data)
 
 // llama
 
-static llama_context_params llama_context_from_xoptions(const xoptions & xoptions_)
+static llama_context_params llama_context_params_from_xoptions(const xoptions & xoptions_)
 {
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.no_perf              = false;
@@ -260,7 +292,7 @@ static size_t write_data(void * ptr, size_t size, size_t nmemb, void * stream)
 }
 
 // Progress callback (older interface)
-int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, curl_off_t /*ultotal*/, curl_off_t /*ulnow*/)
+static int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, curl_off_t /*ultotal*/, curl_off_t /*ulnow*/)
 {
     if (dltotal == 0)
         return 0; // avoid division by zero
@@ -275,7 +307,7 @@ int progress_callback(void * /*clientp*/, curl_off_t dltotal, curl_off_t dlnow, 
     return 0; // return non-zero to abort transfer
 }
 
-bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out_file)
+static bool downnload_file_and_write_to_file(std::string url, std::filesystem::path out_file)
 {
     AVLLM_LOG_DEBUG("%s: with argument: %s \n", "model_pull", url.c_str());
     CURL * curl;

@@ -26,18 +26,33 @@
    - [x] Default
    - [x] stream
    - [ ] Image input
-   - [ ] function
+   - [x] function
    - [ ] Logbrobs
 </details>
 <details>
  <summary>
-[Endpoint] Models 
+[Endpoint][open-ai] Models 
   </summary>
  
    - [x] list models  
    - [x] retrieve model 
    - [ ] delete a model
 </details>
+
+   - [x] [Endpoint][open-ai] Embeddings 
+
+<details>
+ <summary>
+[Endpoint] ollama 
+  </summary>
+ 
+   - [x] /api/tags
+   - [x] /api/show  
+   - [x] /api/chat 
+   - [ ] /api/generate
+</details>
+
+    - [x] /convert/oai_to_text
 
 <details>
  <summary> [Endpoint] FIM (Fill-In-Middle) </summary>

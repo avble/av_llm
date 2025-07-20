@@ -114,7 +114,6 @@ def quick_sort(arr):
 arr = [3, 6, 8, 10, 1, 2, 1]
 sorted_arr = quick_sort(arr)
 print("Sorted array:", sorted_arr)
-
 ```
 
 <details>
@@ -212,13 +211,6 @@ What's the weather like in New York?<|im_end|><|im_start|>
 ```
 
 ## FIM (Fill-In-Middle)
-
-- command-line
-
-``` sh
-$ avllm_gen.exe -m <path-to-model> -input @file
-```
-
 - given input
 ```
 <|fim_prefix|>def quicksort(arr):

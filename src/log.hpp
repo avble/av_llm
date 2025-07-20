@@ -1,9 +1,10 @@
 #ifndef _AVLLM_LOG_H_
 #define _AVLLM_LOG_H_
-#include <cstdarg>
+
 #include <cstdlib>
 #include <cstring>
 #include <stdio.h>
+#include <string>
 
 namespace avllm {
 enum class log_level

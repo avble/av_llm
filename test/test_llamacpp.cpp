@@ -13,13 +13,9 @@ using json = nlohmann::ordered_json;
 #include <array>
 #include <cstdlib>
 #include <filesystem>
-#include <iomanip>
 #include <iostream>
-#include <iterator>
 #include <map>
-#include <regex>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #ifdef _MSC_VER
