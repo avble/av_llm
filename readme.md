@@ -1,6 +1,7 @@
 ## Overview
 
-- Gen AI stuff
+- C++ server for serving the LLM inference (based on llama.cpp)
+- Explore the LLM model
 
 ## Demos
 * Demo chat with Jan AI agent
