@@ -86,6 +86,9 @@
 			}
 		},
 
+		{ "name": "x64-Ubuntu-vulkan-debug", "inherits": [ "base-ninja", "llama-debug", "vulkan", "debug" ] },
+		{ "name": "x64-Ubuntu-vulkan-release", "inherits": [ "base-ninja", "llama-release", "vulkan", "release" ] },
+
 		{ "name": "x64-Ubuntu-gcc-debug", "inherits": [ "base-ninja", "llama-debug", "debug" ] },
 		{ "name": "x64-Ubuntu-gcc-release", "inherits": [ "base-ninja", "llama-release", "release" ] },
 
@@ -99,7 +102,7 @@
 		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama-debug", "debug" ] },
 		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama-release", "release" ] },
 
-		{ "name": "x64-windows-vs-release", "inherits": [ "base-vs", "llama-release", "reldbg" ] },
+		{ "name": "x64-windows", "inherits": [ "base-vs", "llama-release", "reldbg" ] },
 
 		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama-debug", "debug"] },
 		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama-release", "release"] },

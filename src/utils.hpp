@@ -34,7 +34,8 @@ struct xoptions
         n_batch = 4096;
         ngl     = 0;
 
-        port = 8080;
+        port       = 8080;
+        n_parallel = 1;
     }
 
     int n_predict;
@@ -53,6 +54,7 @@ struct xoptions
     std::string model_path_emb;
     // llama-server
     std::string llama_srv_args;
+    int n_parallel; // number of parallel requests
 };
 
 // oai

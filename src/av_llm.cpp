@@ -217,6 +217,7 @@ int main(int argc, char ** argv)
     // ---- SERVE command ----
     auto serve = app.add_subcommand("serve", "Serve model");
     serve->add_option("-p,--port", xoptions_.port, "Serve port");
+    serve->add_option("--nparallel", xoptions_.n_parallel, "Number of parallel requests");
     serve->add_option("--emb-model", xoptions_.model_path_emb, "Embedding Model path");
     serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path");
 
@@ -534,33 +535,209 @@ static void chat_cmd_handler(std::filesystem::path model_path)
 
 }; // end of chat handler
 
-// Add this struct near the top, after includes and before usage
-class chat_session_t : public http::base_data
+class context_session : public http::base_data
 {
-
 public:
-    chat_session_t(const chat_session_t &) = delete;
-    chat_session_t(llama_context_ptr && _ctx) : http::base_data(), ctx(std::move(_ctx))
+    context_session(const context_session &) = delete;
+    context_session(llama_context_ptr && _ctx) : http::base_data(), ctx(std::move(_ctx))
     {
-        AVLLM_LOG_TRACE_SCOPE("chat_session_t");
+        AVLLM_LOG_TRACE_SCOPE("context_session");
         chat_message_start = 0;
         chat_message_end   = 0;
         chat_message_output.resize(llama_n_ctx(ctx.get()));
     }
 
-    ~chat_session_t() { AVLLM_LOG_TRACE_SCOPE("~chat_session_t"); }
+    ~context_session() { AVLLM_LOG_TRACE_SCOPE("~context_session"); }
 
-    uint32_t get_n_ubatch() const { return llama_n_ubatch(ctx.get()); }
     uint32_t get_n_batch() const { return llama_n_batch(ctx.get()); }
     uint32_t get_n_ctx() const { return llama_n_ctx(ctx.get()); }
+
+    const llama_model * get_model() const { return llama_get_model(ctx.get()); }
+    llama_context * get_ctx() const { return ctx.get(); }
 
 public:
     llama_context_ptr ctx;
     std::vector<char> chat_message_output;
     int chat_message_start;
     int chat_message_end;
-
     const bool add_generation_prompt = true;
+};
+
+// helper
+std::string model_oaicompact_to_text(const llama_model * model, const nlohmann::ordered_json & oai_js)
+{
+    std::string result;
+
+    const std::string str_messages = oai_js.at("messages").dump();
+
+    std::string bos_token = "";
+    std::string eos_token = "";
+
+    std::vector<common_chat_msg> messages = common_chat_msgs_parse_oaicompat(str_messages);
+
+    const std::string str_tools         = oai_js.at("tools").dump();
+    std::vector<common_chat_tool> tools = common_chat_tools_parse_oaicompat(str_tools);
+
+    const auto add_generation_prompt = true;
+
+    common_chat_templates_inputs inputs;
+    inputs.use_jinja             = true;
+    inputs.messages              = messages;
+    inputs.add_generation_prompt = add_generation_prompt;
+    inputs.tools                 = tools;
+
+    std::string template_jinja;
+    auto tmpls = common_chat_templates_init(model, template_jinja.c_str(), bos_token, eos_token);
+    try
+    {
+        result = common_chat_templates_apply(tmpls.get(), inputs).prompt;
+    } catch (const std::exception & e)
+    {
+        AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
+    }
+    return result;
+};
+
+std::vector<llama_token> context_session_oaicompact_to_tokens(context_session & ctx_session_, const common_chat_templates * tmpl,
+                                                              const std::vector<llama_chat_message> & chat_messages,
+                                                              const json tools_js = json())
+{
+    const llama_context * ctx = ctx_session_.ctx.get();
+    const llama_model * model = llama_get_model(ctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+
+    { // get input string and apply template
+
+        if (!xoptions_.jinja)
+        {
+            // if not jinja, use the old way
+            AVLLM_LOG_DEBUG("%s: using deprecated ctx_session_ template \n", __func__);
+            const char * chat_tmpl = common_chat_templates_source(tmpl);
+
+            int len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
+                                                ctx_session_.chat_message_output.data(), ctx_session_.chat_message_output.size());
+
+            if (len > (int) ctx_session_.chat_message_output.size())
+            {
+                ctx_session_.chat_message_output.resize(len);
+                len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
+                                                ctx_session_.chat_message_output.data(), ctx_session_.chat_message_output.size());
+            }
+
+            if (len < 0)
+            {
+                AVLLM_LOG_ERROR("%s: error: failed to apply ctx_session_ template", __func__);
+                return {};
+            }
+
+            ctx_session_.chat_message_start = ctx_session_.chat_message_end;
+            ctx_session_.chat_message_end   = len;
+        }
+        else
+        {
+            std::vector<common_chat_msg> messages;
+            for (const auto & msg : chat_messages)
+            {
+                common_chat_msg chat_msg;
+                chat_msg.role    = msg.role;
+                chat_msg.content = msg.content;
+                messages.push_back(chat_msg);
+            }
+
+            std::string template_jinja = "";
+            std::string tools_str      = tools_js.dump();
+
+            std::vector<common_chat_tool> tools =
+                tools_str != "" ? common_chat_tools_parse_oaicompat(tools_str) : std::vector<common_chat_tool>();
+
+            bool add_generation_prompt = true;
+
+            common_chat_templates_inputs inputs;
+            inputs.use_jinja             = true;
+            inputs.messages              = messages;
+            inputs.add_generation_prompt = add_generation_prompt;
+            inputs.tools                 = tools;
+
+            ctx_session_.chat_message_start  = ctx_session_.chat_message_end;
+            auto prompt_                     = common_chat_templates_apply(tmpl, inputs).prompt;
+            ctx_session_.chat_message_output = std::vector(prompt_.begin(), prompt_.end());
+            ctx_session_.chat_message_end    = ctx_session_.chat_message_output.size();
+        }
+    }
+    std::string prompt(ctx_session_.chat_message_output.begin() + ctx_session_.chat_message_start,
+                       ctx_session_.chat_message_output.begin() + ctx_session_.chat_message_end);
+
+    llama_token new_token;
+    // const llama_vocab * vocab = llama_model_get_vocab(model);
+
+    int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
+    std::vector<llama_token> prompt_tokens(n_prompt_tokens);
+
+    if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
+    {
+        AVLLM_LOG_ERROR("%s: failed to tokenize the prompt \n", __func__);
+        return {};
+    }
+    return prompt_tokens;
+};
+
+int context_gen_text_until_eog(context_session & ctx_session_, std::vector<llama_token> & prompt_tokens,
+                               std::function<int(int, const std::string &)> func_, llama_sampler * smpl)
+{
+    llama_token new_token;
+    const llama_context * ctx = ctx_session_.ctx.get();
+    const llama_model * model = llama_get_model(ctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+
+    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+
+    while (true)
+    {
+        int n_ctx      = llama_n_ctx(ctx_session_.ctx.get());
+        int n_ctx_used = llama_kv_self_used_cells(ctx_session_.ctx.get());
+
+        if (n_ctx_used + batch.n_tokens > n_ctx)
+        {
+            AVLLM_LOG_WARN("%s: the context is exceeded. \n", __func__);
+            func_(-1, "");
+            return -1;
+        }
+
+        if (llama_decode(ctx_session_.ctx.get(), batch))
+        {
+            AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
+            func_(-1, "");
+            return -1;
+        }
+
+        new_token = llama_sampler_sample(smpl, ctx_session_.ctx.get(), -1);
+        if (llama_vocab_is_eog(vocab, new_token))
+        {
+            func_(-1, "");
+            break;
+        }
+
+        char buf[100];
+        int n = llama_token_to_piece(vocab, new_token, buf, sizeof(buf), 0, true);
+        if (n < 0)
+        {
+            AVLLM_LOG_ERROR("%s, failed to convert a token \n", __func__);
+            func_(-1, "");
+            return -1;
+        }
+
+        std::string out(buf, n);
+
+        if (func_(0, out) < 0)
+        {
+            AVLLM_LOG_WARN("%s, terminated by caller \n", __func__);
+            return 0;
+        }
+
+        batch = llama_batch_get_one(&new_token, 1);
+    }
+
+    return 0; // return -1 means end of the ctx_session_ session
 };
 
 void server_cmd_handler(std::filesystem::path model_path)
@@ -571,9 +748,102 @@ void server_cmd_handler(std::filesystem::path model_path)
 #else
     bool silent = false;
 #endif
-    llama_model_ptr model_general;
-    common_chat_templates_ptr model_chat_templates;
-    llama_sampler_ptr model_sampler_default;
+
+    struct model_general_t
+    {
+
+        model_general_t(std::string _model_path) : model_path(_model_path) {}
+
+        void init()
+        {
+
+            {
+                llama_model_params model_params = llama_model_default_params();
+                model_params.n_gpu_layers       = xoptions_.ngl;
+                model_ptr                       = llama_model_ptr(llama_model_load_from_file(model_path.c_str(), model_params));
+            }
+            if (!model_ptr)
+                return;
+
+            {
+                llama_model * model = model_ptr.get();
+                chat_templates_ptr  = common_chat_templates_init(model, "");
+                try
+                {
+                    common_chat_format_example(chat_templates_ptr.get(), false);
+                } catch (const std::exception & e)
+                {
+                    AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
+                    AVLLM_LOG_WARN("%s: The chat template that comes with this model is not yet supported, falling back to chatml. "
+                                   "This may cause the "
+                                   "model to output suboptimal responses\n",
+                                   __func__);
+                    chat_templates_ptr = common_chat_templates_init(model, "chatml");
+                }
+                {
+                    AVLLM_LOG_DEBUG("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates_ptr.get()));
+                    AVLLM_LOG_DEBUG("%s: chat example: %s \n", __func__,
+                                    common_chat_format_example(chat_templates_ptr.get(), false).c_str());
+                }
+            }
+
+            // initialize the sampler
+            {
+                auto sparams          = llama_sampler_chain_default_params();
+                sparams.no_perf       = false;
+                llama_sampler * smpl_ = llama_sampler_chain_init(sparams);
+                llama_sampler_chain_add(smpl_, llama_sampler_init_greedy());
+                sampler_default_ptr = llama_sampler_ptr(smpl_);
+            }
+
+            if (!sampler_default_ptr)
+            {
+                AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
+                return;
+            }
+
+            initialized = true;
+        }
+
+        std::vector<llama_token> model_string_to_tokens(const std::string & str)
+        {
+            llama_model * model = model_ptr.get();
+            auto tokens         = [&model, &str]() -> std::vector<llama_token> {
+                const llama_vocab * vocab = llama_model_get_vocab(model);
+                int n_token               = -llama_tokenize(vocab, str.data(), str.size(), NULL, 0, true, true);
+                std::vector<llama_token> tokens(n_token);
+                if (llama_tokenize(vocab, str.data(), str.size(), tokens.data(), tokens.size(), true, true) < 0)
+                    return {};
+                return tokens;
+            }();
+            return tokens;
+        };
+
+        llama_context_ptr context_init()
+        {
+
+            llama_context_params ctx_params = llama_context_default_params();
+            llama_model * model             = model_ptr.get();
+            ctx_params.no_perf              = false;
+            ctx_params.n_ctx                = xoptions_.n_ctx;
+            ctx_params.n_batch              = xoptions_.n_batch;
+            return llama_context_ptr(llama_init_from_model(model, ctx_params));
+        };
+
+        llama_context_ptr model_llama_ctx_init_from_params(const llama_context_params & ctx_params)
+        {
+            llama_model * model = model_ptr.get();
+            return llama_context_ptr(llama_init_from_model(model, ctx_params));
+        };
+
+        bool is_initialized() const { return initialized; }
+
+        llama_model_ptr model_ptr                    = nullptr;
+        common_chat_templates_ptr chat_templates_ptr = nullptr;
+        llama_sampler_ptr sampler_default_ptr        = nullptr;
+        std::string model_path;
+        bool initialized = false;
+    } model_general(model_path.generic_string());
 
     llama_model_ptr model_embedding;
 
@@ -581,316 +851,10 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     if (xoptions_.model_url_or_alias != "")
     {
-        llama_model_ptr model = [&model_path]() -> llama_model_ptr {
-            llama_model_params model_params = llama_model_default_params();
-            model_params.n_gpu_layers       = xoptions_.ngl;
-            return llama_model_ptr(llama_model_load_from_file(model_path.generic_string().c_str(), model_params));
-        }();
-        if (!model)
-        {
-            AVLLM_LOG_ERROR("%s: error: unable to load model\n", __func__);
-        }
-        else
-        {
-            model_general = std::move(model);
-            AVLLM_LOG_INFO("%20s:%s\n", "model path", model_path.generic_string().c_str());
-        }
-
-        // chat template
-        model_chat_templates = [&model_general]() {
-            llama_model * model  = model_general.get();
-            auto chat_templates_ = common_chat_templates_init(model, "");
-            try
-            {
-                common_chat_format_example(chat_templates_.get(), false);
-            } catch (const std::exception & e)
-            {
-                AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
-                AVLLM_LOG_WARN("%s: The chat template that comes with this model is not yet supported, falling back to chatml. "
-                               "This may cause the "
-                               "model to output suboptimal responses\n",
-                               __func__);
-                chat_templates_ = common_chat_templates_init(model, "chatml");
-            }
-            {
-                AVLLM_LOG_DEBUG("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates_.get()));
-                AVLLM_LOG_DEBUG("%s: chat example: %s \n", __func__,
-                                common_chat_format_example(chat_templates_.get(), false).c_str());
-            }
-
-            return chat_templates_;
-        }();
-
-        // initialize the sampler
-        // llama_sampler_ptr smpl;
-        model_sampler_default = []() {
-            auto sparams          = llama_sampler_chain_default_params();
-            sparams.no_perf       = false;
-            llama_sampler * smpl_ = llama_sampler_chain_init(sparams);
-            llama_sampler_chain_add(smpl_, llama_sampler_init_greedy());
-            return llama_sampler_ptr(smpl_);
-        }();
-        if (!model_sampler_default)
-        {
-            AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-            return;
-        }
-        if (!silent)
-        {
-            AVLLM_LOG_DEBUG("%s", "sampler:\n");
-            llama_sampler_print(model_sampler_default.get());
-        }
+        model_general.init();
+        if (!model_general.is_initialized())
+            AVLLM_LOG_WARN("%s: error: unable to load model\n", __func__);
     }
-
-    auto model_llama_ctx_init = [&model_general]() -> llama_context_ptr {
-        llama_context_params ctx_params = llama_context_default_params();
-        llama_model * model             = model_general.get();
-        ctx_params.no_perf              = false;
-        ctx_params.n_ctx                = xoptions_.n_ctx;
-        ctx_params.n_batch              = xoptions_.n_batch;
-        return llama_context_ptr(llama_init_from_model(model, ctx_params));
-    };
-
-    auto model_llama_ctx_init_from_params = [&model_general](const llama_context_params & ctx_params) -> llama_context_ptr {
-        llama_model * model = model_general.get();
-        return llama_context_ptr(llama_init_from_model(model, ctx_params));
-    };
-
-    auto model_gen_text_until_eog = [&model_general, &model_sampler_default](chat_session_t & chat,
-                                                                             std::vector<llama_token> & prompt_tokens,
-                                                                             std::function<int(int, const std::string &)> func_,
-                                                                             llama_sampler * _smpl = nullptr) -> int {
-        llama_token new_token;
-        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
-
-        llama_batch batch    = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
-        llama_sampler * smpl = _smpl ? _smpl : model_sampler_default.get();
-
-        while (true)
-        {
-            int n_ctx      = llama_n_ctx(chat.ctx.get());
-            int n_ctx_used = llama_kv_self_used_cells(chat.ctx.get());
-
-            if (n_ctx_used + batch.n_tokens > n_ctx)
-            {
-                AVLLM_LOG_WARN("%s: the context is exceeded. \n", __func__);
-                func_(-1, "");
-                return -1;
-            }
-
-            if (llama_decode(chat.ctx.get(), batch))
-            {
-                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
-                func_(-1, "");
-                return -1;
-            }
-
-            new_token = llama_sampler_sample(smpl, chat.ctx.get(), -1);
-            if (llama_vocab_is_eog(vocab, new_token))
-            {
-                func_(-1, "");
-                break;
-            }
-
-            char buf[100];
-            int n = llama_token_to_piece(vocab, new_token, buf, sizeof(buf), 0, true);
-            if (n < 0)
-            {
-                AVLLM_LOG_ERROR("%s, failed to convert a token \n", __func__);
-                func_(-1, "");
-                return -1;
-            }
-
-            std::string out(buf, n);
-            // AVLLM_LOG_TRACE("%s", out.c_str());
-
-            if (func_(0, out) < 0)
-            {
-                AVLLM_LOG_WARN("%s, terminated by caller \n", __func__);
-                return 0;
-            }
-
-            batch = llama_batch_get_one(&new_token, 1);
-        }
-
-        return 0; // return -1 means end of the chat session
-    };
-
-    auto model_string_to_tokens = [&model_general](const std::string & str) -> std::vector<llama_token> {
-        llama_model * model = model_general.get();
-        auto tokens         = [&model, &str]() -> std::vector<llama_token> {
-            const llama_vocab * vocab = llama_model_get_vocab(model);
-            int n_token               = -llama_tokenize(vocab, str.data(), str.size(), NULL, 0, true, true);
-            std::vector<llama_token> tokens(n_token);
-            if (llama_tokenize(vocab, str.data(), str.size(), tokens.data(), tokens.size(), true, true) < 0)
-                return {};
-            return tokens;
-        }();
-        return tokens;
-    };
-
-    [[deprecated("Use model_oaicompact_to_tokens instead")]]
-    auto chat_template_to_tokens =
-        [&model_chat_templates, &model_general](chat_session_t & chat,
-                                                const std::vector<llama_chat_message> & chat_messages) -> std::vector<llama_token> {
-        llama_model * model       = model_general.get();
-        const llama_vocab * vocab = llama_model_get_vocab(model);
-
-        { // get input string and apply template
-
-            auto chat_tmpl = common_chat_templates_source(model_chat_templates.get());
-
-            int len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                chat.chat_message_output.data(), chat.chat_message_output.size());
-
-            if (len > (int) chat.chat_message_output.size())
-            {
-                chat.chat_message_output.resize(len);
-                len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                chat.chat_message_output.data(), chat.chat_message_output.size());
-            }
-
-            if (len < 0)
-            {
-                AVLLM_LOG_ERROR("%s: error: failed to apply chat template", __func__);
-                return {};
-            }
-
-            chat.chat_message_end = len;
-        }
-        std::string prompt(chat.chat_message_output.begin() + chat.chat_message_start,
-                           chat.chat_message_output.begin() + chat.chat_message_end);
-
-        llama_token new_token;
-        // const llama_vocab * vocab = llama_model_get_vocab(model);
-
-        int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
-        std::vector<llama_token> prompt_tokens(n_prompt_tokens);
-
-        if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
-        {
-            AVLLM_LOG_ERROR("%s: failed to tokenize the prompt \n", __func__);
-            return {};
-        }
-        return prompt_tokens;
-    };
-
-    auto model_oaicompact_to_text = [&model_general, &model_chat_templates](const nlohmann::ordered_json & oai_js) -> std::string {
-        std::string result;
-
-        const std::string str_messages = oai_js.at("messages").dump();
-
-        std::string bos_token = "";
-        std::string eos_token = "";
-
-        std::vector<common_chat_msg> messages = common_chat_msgs_parse_oaicompat(str_messages);
-
-        const std::string str_tools         = oai_js.at("tools").dump();
-        std::vector<common_chat_tool> tools = common_chat_tools_parse_oaicompat(str_tools);
-
-        const auto add_generation_prompt = true;
-
-        common_chat_templates_inputs inputs;
-        inputs.use_jinja             = true;
-        inputs.messages              = messages;
-        inputs.add_generation_prompt = add_generation_prompt;
-        inputs.tools                 = tools;
-
-        std::string template_jinja;
-        auto tmpls = common_chat_templates_init(model_general.get(), template_jinja.c_str(), bos_token, eos_token);
-        try
-        {
-            result = common_chat_templates_apply(tmpls.get(), inputs).prompt;
-        } catch (const std::exception & e)
-        {
-            AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
-        }
-        return result;
-    };
-
-    auto model_oaicompact_to_tokens =
-        [&model_general, &model_chat_templates](chat_session_t & chat, const std::vector<llama_chat_message> & chat_messages,
-                                                const json tools_js = json()) -> std::vector<llama_token> {
-        // This function is used to convert chat messages to tokens using the chat template.
-
-        llama_model * model       = model_general.get();
-        const llama_vocab * vocab = llama_model_get_vocab(model);
-
-        { // get input string and apply template
-
-            if (!xoptions_.jinja)
-            {
-                // if not jinja, use the old way
-                // deprecated
-                AVLLM_LOG_DEBUG("%s: using deprecated chat template \n", __func__);
-                auto chat_tmpl = common_chat_templates_source(model_chat_templates.get());
-
-                int len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                    chat.chat_message_output.data(), chat.chat_message_output.size());
-
-                if (len > (int) chat.chat_message_output.size())
-                {
-                    chat.chat_message_output.resize(len);
-                    len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                    chat.chat_message_output.data(), chat.chat_message_output.size());
-                }
-
-                if (len < 0)
-                {
-                    AVLLM_LOG_ERROR("%s: error: failed to apply chat template", __func__);
-                    return {};
-                }
-
-                chat.chat_message_start = chat.chat_message_end;
-                chat.chat_message_end   = len;
-            }
-            else
-            {
-                std::vector<common_chat_msg> messages;
-                for (const auto & msg : chat_messages)
-                {
-                    common_chat_msg chat_msg;
-                    chat_msg.role    = msg.role;
-                    chat_msg.content = msg.content;
-                    messages.push_back(chat_msg);
-                }
-
-                std::string template_jinja = "";
-                std::string tools_str      = tools_js.dump();
-
-                std::vector<common_chat_tool> tools =
-                    tools_str != "" ? common_chat_tools_parse_oaicompat(tools_str) : std::vector<common_chat_tool>();
-
-                bool add_generation_prompt = true;
-
-                common_chat_templates_inputs inputs;
-                inputs.use_jinja             = true;
-                inputs.messages              = messages;
-                inputs.add_generation_prompt = add_generation_prompt;
-                inputs.tools                 = tools;
-
-                chat.chat_message_start  = chat.chat_message_end;
-                auto prompt_             = common_chat_templates_apply(model_chat_templates.get(), inputs).prompt;
-                chat.chat_message_output = std::vector(prompt_.begin(), prompt_.end());
-                chat.chat_message_end    = chat.chat_message_output.size();
-            }
-        }
-        std::string prompt(chat.chat_message_output.begin() + chat.chat_message_start,
-                           chat.chat_message_output.begin() + chat.chat_message_end);
-
-        llama_token new_token;
-        // const llama_vocab * vocab = llama_model_get_vocab(model);
-
-        int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
-        std::vector<llama_token> prompt_tokens(n_prompt_tokens);
-
-        if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
-        {
-            AVLLM_LOG_ERROR("%s: failed to tokenize the prompt \n", __func__);
-            return {};
-        }
-        return prompt_tokens;
-    };
 
     // load embedding model if any
     if (xoptions_.model_path_emb != "")
@@ -1066,8 +1030,7 @@ void server_cmd_handler(std::filesystem::path model_path)
     };
 
     // oai (completions, chat completions, embedding)
-    static auto completions_handler = [&model_llama_ctx_init_from_params, &model_string_to_tokens, &model_general,
-                                       &model_gen_text_until_eog](std::shared_ptr<http::response> res) -> void {
+    static auto completions_handler = [&model_general](std::shared_ptr<http::response> res) -> void {
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "completions_handler")
                                   .c_str())
@@ -1085,7 +1048,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                         res->reqwest().request_id(), max_tokens, prompt.c_str(), is_stream);
 
         // get vocab
-        auto vocab = llama_model_get_vocab(model_general.get());
+        auto vocab = llama_model_get_vocab(model_general.model_ptr.get());
         if (!vocab)
         {
             AVLLM_LOG_ERROR("%s: error: could not get vocab\n", __func__);
@@ -1119,18 +1082,18 @@ void server_cmd_handler(std::filesystem::path model_path)
             if (!res->session_data())
             {
                 llama_context_params ctx_params = llama_context_params_from_xoptions(xoptions_);
-                res->session_data()             = std::make_unique<chat_session_t>(model_llama_ctx_init_from_params(ctx_params));
+                res->session_data() = std::make_unique<context_session>(model_general.model_llama_ctx_init_from_params(ctx_params));
             }
 
-            chat_session_t * chat_session = reinterpret_cast<chat_session_t *>(res->session_data().get());
-            if (!chat_session)
+            context_session * ctx_session_ = reinterpret_cast<context_session *>(res->session_data().get());
+            if (!ctx_session_)
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session is not initialized");
 
-            if (!chat_session->ctx)
+            if (!ctx_session_->ctx)
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session. context is not initialized");
 
             // tokenize the prompt
-            auto prompt_tokens = model_string_to_tokens(prompt);
+            auto prompt_tokens = model_general.model_string_to_tokens(prompt);
 
             if (prompt_tokens.size() == 0)
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Tokenization failed - no tokens generated");
@@ -1157,7 +1120,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     return 0; // continue generation
                 };
 
-                model_gen_text_until_eog(*chat_session, prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
+                context_gen_text_until_eog(*ctx_session_, prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
 
 #ifndef NDEBUG
                 AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] gen_text=%s\n", res->session_id(), res->reqwest().request_id(),
@@ -1202,14 +1165,13 @@ void server_cmd_handler(std::filesystem::path model_path)
 
                 // start writing chunk
                 res->event_source_start();
-                model_gen_text_until_eog(*chat_session, prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
+                context_gen_text_until_eog(*ctx_session_, prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
                 res->event_source_oai_end();
             }
         }
     };
 
-    static auto chat_completions_handler = [&model_llama_ctx_init, &model_oaicompact_to_tokens,
-                                            &model_gen_text_until_eog](std::shared_ptr<http::response> res) -> void {
+    static auto chat_completions_handler = [&model_general](std::shared_ptr<http::response> res) -> void {
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "chat_completions_handler")
                                   .c_str())
@@ -1227,13 +1189,13 @@ void server_cmd_handler(std::filesystem::path model_path)
 
         // ensure that the session data is initialized
         if (!res->session_data())
-            res->session_data() = std::make_unique<chat_session_t>(model_llama_ctx_init());
+            res->session_data() = std::make_unique<context_session>(model_general.context_init());
 
-        chat_session_t * chat_session = static_cast<chat_session_t *>(res->session_data().get());
-        if (!chat_session)
+        context_session * ctx_session_ = static_cast<context_session *>(res->session_data().get());
+        if (!ctx_session_)
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session is not initialized");
 
-        if (!chat_session->ctx)
+        if (!ctx_session_->ctx)
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session. context is not initialized");
 
         std::vector<llama_chat_message> chat_messages;
@@ -1272,7 +1234,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return 0;
             };
 
-            std::vector<llama_token> tokens = model_oaicompact_to_tokens(*chat_session, chat_messages, tools);
+            std::vector<llama_token> tokens =
+                context_session_oaicompact_to_tokens(*ctx_session_, model_general.chat_templates_ptr.get(), chat_messages, tools);
             if (tokens.size() == 0)
             {
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
@@ -1280,7 +1243,7 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
 
             res->event_source_start();
-            model_gen_text_until_eog(*chat_session, tokens, std::ref(get_text_hdl));
+            context_gen_text_until_eog(*ctx_session_, tokens, std::ref(get_text_hdl), model_general.sampler_default_ptr.get());
             res->event_source_oai_end();
         }
         else
@@ -1303,7 +1266,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                 return 0;
             };
 
-            std::vector<llama_token> prompt_tokens = model_oaicompact_to_tokens(*chat_session, chat_messages, tools);
+            std::vector<llama_token> prompt_tokens =
+                context_session_oaicompact_to_tokens(*ctx_session_, model_general.chat_templates_ptr.get(), chat_messages, tools);
             if (prompt_tokens.size() == 0)
             {
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
@@ -1311,7 +1275,8 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
 
             uint32_t prompt_tokens_size = static_cast<uint32_t>(prompt_tokens.size());
-            model_gen_text_until_eog(*chat_session, prompt_tokens, std::ref(get_text_hdl));
+            context_gen_text_until_eog(*ctx_session_, prompt_tokens, std::ref(get_text_hdl),
+                                       model_general.sampler_default_ptr.get());
             json res_body = { { "id", "cmpl-" + string_generate_random(20) },
                               { "object", "text_completion" },
                               { "created", std::time(0) },
@@ -1431,8 +1396,7 @@ void server_cmd_handler(std::filesystem::path model_path)
     };
 
     // infill, fim
-    static auto fim_handler = [&model_llama_ctx_init, &model_gen_text_until_eog,
-                               &model_general](std::shared_ptr<http::response> res) -> void {
+    static auto fim_handler = [&model_general](std::shared_ptr<http::response> res) -> void {
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "fim_handler")
                                   .c_str())
@@ -1441,7 +1405,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 #else
         bool silent = false;
 #endif
-        const llama_vocab * vocab = llama_model_get_vocab(model_general.get());
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.model_ptr.get());
         if (!silent)
             AVLLM_LOG_INFO("%s \n", res->reqwest().body().c_str());
 
@@ -1552,9 +1516,9 @@ void server_cmd_handler(std::filesystem::path model_path)
             {
                 AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
                 AVLLM_LOG_INFO("%20s:%d", "number of context", xoptions_.n_ctx);
-                llama_context_ptr p = model_llama_ctx_init();
+                llama_context_ptr p = model_general.context_init();
                 if (p)
-                    res->session_data() = std::make_unique<chat_session_t>(std::move(p));
+                    res->session_data() = std::make_unique<context_session>(std::move(p));
                 else
                     throw std::runtime_error("can not initalize context");
             }
@@ -1564,10 +1528,10 @@ void server_cmd_handler(std::filesystem::path model_path)
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
         }
 
-        chat_session_t * chat_session = reinterpret_cast<chat_session_t *>(res->session_data().get());
+        context_session * ctx_session_ = reinterpret_cast<context_session *>(res->session_data().get());
 
-        uint32_t n_batch = chat_session->get_n_batch();
-        uint32_t n_ctx   = chat_session->get_n_ctx();
+        uint32_t n_batch = ctx_session_->get_n_batch();
+        uint32_t n_ctx   = ctx_session_->get_n_ctx();
 
         auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), n_batch, n_predict, n_ctx, false,
                                     tokenized_prompts[0]);
@@ -1615,7 +1579,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
 
         {
-            model_gen_text_until_eog(*chat_session, tokens, get_text_hdl, smpl_.get());
+            context_gen_text_until_eog(*ctx_session_, tokens, get_text_hdl, smpl_.get());
             json body_js;
             body_js["content"] = res_body;
             res->set_content(body_js.dump());
@@ -1641,7 +1605,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
     auto async_thread_wrapper = [&model_general](std::function<void(std::shared_ptr<http::response>)> func_) {
         return [func_, &model_general](std::shared_ptr<http::response> res) {
-            if (!model_general)
+            if (!model_general.is_initialized())
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
                                          "not suppport. the model is not inialized as request");
             std::thread(func_, res).detach();
@@ -1687,15 +1651,13 @@ void server_cmd_handler(std::filesystem::path model_path)
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
             AVLLM_LOG_INFO("[%05d][%3d]%20s:%lld (ms)\n", res_->session_id(), identifier, "duration", duration);
-            // printf("%s", CONSOLE_COLOR_BLUE);
             AVLLM_LOG_INFO("[%05d][%3d]%20s:%s\n", res_->session_id(), identifier, "worker", "END");
-            // printf("%s", CONSOLE_RESET);
         }
     };
 
     auto async_thread_pool_wrapper = [&model_general, &thread_pool_](std::function<void(std::shared_ptr<http::response>)> func_) {
         return [func_, &model_general, &thread_pool_](std::shared_ptr<http::response> res) {
-            if (!model_general)
+            if (!model_general.is_initialized())
                 HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
                                          "not suppport. the model is not inialized as request");
 
@@ -1715,27 +1677,26 @@ void server_cmd_handler(std::filesystem::path model_path)
         embedding_handler(res);
     };
 
-    auto oaicompact_to_text_handler = [&model_oaicompact_to_text](std::shared_ptr<http::response> res) {
+    auto oaicompact_to_text_handler = [&model_general](std::shared_ptr<http::response> res) {
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
-                                                    res->reqwest().request_id(), "model_oaicompact_to_text_handler")
+                                                    res->reqwest().request_id(), "context_session_oaicompact_to_text_handler")
                                   .c_str())
-
-        printf("[DEBUG] body:\n%s\n", res->reqwest().body().c_str());
 
         nlohmann::ordered_json body_js = json_parse(res->reqwest().body());
         if (body_js.empty())
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid request body");
 
-        printf("[DEBUG] body:\n%s\n", body_js.dump(4).c_str());
-
-        std::string text = model_oaicompact_to_text(body_js);
+        std::string text = model_oaicompact_to_text(model_general.model_ptr.get(), body_js);
         res->set_content(text);
         res->endend();
     };
 
     std::vector<std::thread> tp;
-    tp.emplace_back(thread_worker);
-    // tp.emplace_back(thread_worker);
+    int n_thread = std::max(1, xoptions_.n_parallel);
+    n_thread     = std::min(n_thread, 16);
+    AVLLM_LOG_INFO("Using %d threads for processing requests\n", n_thread);
+    for (int i = 0; i < n_thread; i++)
+        tp.emplace_back(thread_worker);
 
     http::route route_;
     // clang-format off

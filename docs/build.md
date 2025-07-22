@@ -4,6 +4,10 @@ On Windows, Ubuntu, and macOS
 ``` ssh 
 $ cmake -B build . && cmake --build build
 ```
+# Ubuntu
+``` ssh
+apt install libcurl4-gnutls-dev libssl-dev 
+```
 
 ## Windows CMD
 ```
@@ -12,7 +16,7 @@ call "E:\software_vs\VC\Auxiliary\Build\vcvars64.bat"
 
 
 # VULKAN
-Install SDK
+Install SDK on windows
 + https://vulkan.lunarg.com/sdk/home#windows
 
 build
@@ -21,8 +25,29 @@ enable GGML_VULKAN=ON
 ```
 set Vulkan_SDK=C:\VulkanSDK\1.4.313.2
 
+
+```
+      - name: Dependencies
+        id: depends
+        run: |
+          wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+          sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential mesa-vulkan-drivers vulkan-sdk libcurl4-openssl-dev
+
+      - name: Build
+        id: cmake_build
+        run: |
+          cmake -B build \
+            -DGGML_VULKAN=ON
+          cmake --build build --config Release -j $(nproc)
+
+```
+
+
 Notes
 - Nvidia GPU
+
 
 # SYLC
 - 
