@@ -1,3 +1,7 @@
+/*
+ * [text-input] -> [format chatML] -> [generated text]
+ *
+ */
 #include "arg.h"
 #include "common.h"
 #include "llama.h"

@@ -1,7 +1,6 @@
 #ifndef _OPENAI_API_
 #define _OPENAI_API_
 
-#include <iostream>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -86,22 +85,22 @@ struct ModelList
     size_t size() const { return data.size(); }
 };
 // Convenience functions for nlohmann/json automatic serialization
-void to_json(json & j, const Model & m)
+static void to_json(json & j, const Model & m)
 {
     j = m.to_json();
 }
 
-void from_json(const json & j, Model & m)
+static void from_json(const json & j, Model & m)
 {
     m = av_llm::openai::Model(j);
 }
 
-void to_json(json & j, const ModelList & ml)
+static void to_json(json & j, const ModelList & ml)
 {
     j = ml.to_json();
 }
 
-void from_json(const json & j, av_llm::openai::ModelList & ml)
+static void from_json(const json & j, av_llm::openai::ModelList & ml)
 {
     ml = av_llm::openai::ModelList(j);
 }

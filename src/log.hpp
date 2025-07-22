@@ -1,9 +1,10 @@
 #ifndef _AVLLM_LOG_H_
 #define _AVLLM_LOG_H_
-#include <cstdarg>
+
 #include <cstdlib>
 #include <cstring>
 #include <stdio.h>
+#include <string>
 
 namespace avllm {
 enum class log_level
@@ -18,10 +19,9 @@ enum class log_level
 namespace {
 // Default log level based on build type
 #ifdef NDEBUG
-// static log_level current_log_level = log_level::LOG_INFO; // Release build
-static log_level current_log_level = log_level::LOG_TRACE; // Release build
+static log_level current_log_level = log_level::LOG_INFO; // Release build
 #else
-static log_level current_log_level = log_level::LOG_DEBUG; // Debug build
+static log_level current_log_level = log_level::LOG_TRACE; // Debug build
 #endif
 
 // Initialize log level from environment variable
@@ -91,25 +91,40 @@ class logger_function_trace
 public:
     logger_function_trace(std::string cls_, std::string func_) : cls(cls_), func(func_)
     {
-        if (!cls.empty() && !func.empty()) {
+        if (!cls.empty() && !func.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s:%s ENTER\n", cls.c_str(), func.c_str());
-        } else if (!cls.empty()) {
+        }
+        else if (!cls.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s ENTER\n", cls.c_str());
-        } else if (!func.empty()) {
+        }
+        else if (!func.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s ENTER\n", func.c_str());
-        } else {
+        }
+        else
+        {
             log(log_level::LOG_TRACE, "AVLLM", "ENTER\n");
         }
     }
 
-    ~logger_function_trace() {
-        if (!cls.empty() && !func.empty()) {
+    ~logger_function_trace()
+    {
+        if (!cls.empty() && !func.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s:%s LEAVE\n", cls.c_str(), func.c_str());
-        } else if (!cls.empty()) {
+        }
+        else if (!cls.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", cls.c_str());
-        } else if (!func.empty()) {
+        }
+        else if (!func.empty())
+        {
             log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", func.c_str());
-        } else {
+        }
+        else
+        {
             log(log_level::LOG_TRACE, "AVLLM", "LEAVE\n");
         }
     }

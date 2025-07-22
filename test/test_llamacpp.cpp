@@ -6,15 +6,16 @@
 #include "ggml-backend.h"
 #include "llama.h"
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::ordered_json;
+
 #include <array>
 #include <cstdlib>
 #include <filesystem>
-#include <iomanip>
 #include <iostream>
-#include <iterator>
 #include <map>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #ifdef _MSC_VER
@@ -213,7 +214,14 @@ TEST_CASE("llama_arg_parser")
 TEST_CASE("test_chat_template")
 {
     if (false)
-    { // test: <llama.cpp>/src/llama.cpp
+    {
+        /*
+         * given: conversation & jinja template
+         * output: format the chat [to feed to the model]
+         * notes:
+         * - the jinja template is provided as a hint to detect the type (model)
+         * - then the function llm_chat_apply_template do a simple formatting
+         */
         std::vector<llama_chat_message> conversation{
             { "system", "You are a helpful assistant" },
             { "user", "Hello" },
@@ -239,15 +247,30 @@ TEST_CASE("test_chat_template")
 
         std::string formatted_chat;
         formatted_chat.resize(1024);
-        auto res = llama_chat_apply_template(template_str.c_str(), conversation.data(), conversation.size(), add_generation_prompt,
-                                             formatted_chat.data(), formatted_chat.size());
+        int res = llama_chat_apply_template(template_str.c_str(), conversation.data(), conversation.size(), add_generation_prompt,
+                                            formatted_chat.data(), formatted_chat.size());
 
-        formatted_chat.resize(res);
+        if (res > formatted_chat.size())
+        {
+            formatted_chat.resize(res);
+            llama_chat_apply_template(template_str.c_str(), conversation.data(), conversation.size(), add_generation_prompt,
+                                      formatted_chat.data(), formatted_chat.size());
+        }
+
         std::cout << formatted_chat << std::endl;
         REQUIRE(formatted_chat == expected_output);
     }
 
-    { // test: <llama.cpp>/src/llama-chat.cpp
+    if (false)
+    {
+        /*
+         * given: conversation and jinja template
+         * output: the formated of chat conversion
+         * Notes:
+         * - the jinja can be obtain from model or provided text
+         * - use_jinja: is to determine if use the minja engine to render text or others
+         *
+         */
 
         std::vector<llama_chat_message> conversation{
             { "system", "You are a helpful assistant" },
@@ -284,11 +307,6 @@ TEST_CASE("test_chat_template")
 
         bool add_generation_prompt = true;
 
-        common_chat_templates_inputs inputs;
-        inputs.use_jinja             = false;
-        inputs.messages              = messages;
-        inputs.add_generation_prompt = add_generation_prompt;
-
         auto tmpls = common_chat_templates_init(/* model= */ nullptr, template_str.c_str(), bos_token, eos_token);
         {
             std::cout << "chat template: \n" << common_chat_templates_source(tmpls.get()) << std::endl;
@@ -296,11 +314,270 @@ TEST_CASE("test_chat_template")
                       << common_chat_format_example(tmpls.get(), add_generation_prompt).c_str() << std::endl;
         }
 
-        auto output = common_chat_templates_apply(tmpls.get(), inputs).prompt;
-        REQUIRE(expected == output);
+        {
+            // use the legacy to format the text
+            common_chat_templates_inputs inputs;
+            inputs.use_jinja             = false;
+            inputs.messages              = messages;
+            inputs.add_generation_prompt = add_generation_prompt;
+
+            auto output = common_chat_templates_apply(tmpls.get(), inputs).prompt;
+            REQUIRE(expected == output);
+        }
+        {
+            // use the minja to format the text
+            common_chat_templates_inputs inputs;
+            inputs.use_jinja             = true;
+            inputs.messages              = messages;
+            inputs.add_generation_prompt = add_generation_prompt;
+
+            auto output = common_chat_templates_apply(tmpls.get(), inputs).prompt;
+            REQUIRE(expected == output);
+        }
     }
 
+    if (true)
     {
+        /*
+         * given: jinja and oai input
+         * output: the format chat
+         * notes:
+         * -
+         */
+
+        // Qwen3-8B template
+        std::string qwen3_8b_tmpl = R"( {%- if tools %}
+    {{- '<|im_start|>system\n' }}
+    {%- if messages[0].role == 'system' %}
+        {{- messages[0].content + '\n\n' }}
+    {%- endif %}
+    {{- "# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>" }}
+    {%- for tool in tools %}
+        {{- "\n" }}
+        {{- tool | tojson }}
+    {%- endfor %}
+    {{- "\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n" }}
+{%- else %}
+    {%- if messages[0].role == 'system' %}
+        {{- '<|im_start|>system\n' + messages[0].content + '<|im_end|>\n' }}
+    {%- endif %}
+{%- endif %}
+{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}
+{%- for index in range(ns.last_query_index, -1, -1) %}
+    {%- set message = messages[index] %}
+    {%- if ns.multi_step_tool and message.role == "user" and not('<tool_response>' in message.content and '</tool_response>' in message.content) %}
+        {%- set ns.multi_step_tool = false %}
+        {%- set ns.last_query_index = index %}
+    {%- endif %}
+{%- endfor %}
+{%- for message in messages %}
+    {%- if (message.role == "user") or (message.role == "system" and not loop.first) %}
+        {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
+    {%- elif message.role == "assistant" %}
+        {%- set content = message.content %}
+        {%- set reasoning_content = '' %}
+        {%- if message.reasoning_content is defined and message.reasoning_content is not none %}
+            {%- set reasoning_content = message.reasoning_content %}
+        {%- else %}
+            {%- if '</think>' in message.content %}
+                {%- set content = message.content.split('</think>')[-1].lstrip('\n') %}
+                {%- set reasoning_content = message.content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') %}
+            {%- endif %}
+        {%- endif %}
+        {%- if loop.index0 > ns.last_query_index %}
+            {%- if loop.last or (not loop.last and reasoning_content) %}
+                {{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
+            {%- else %}
+                {{- '<|im_start|>' + message.role + '\n' + content }}
+            {%- endif %}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\n' + content }}
+        {%- endif %}
+        {%- if message.tool_calls %}
+            {%- for tool_call in message.tool_calls %}
+                {%- if (loop.first and content) or (not loop.first) %}
+                    {{- '\n' }}
+                {%- endif %}
+                {%- if tool_call.function %}
+                    {%- set tool_call = tool_call.function %}
+                {%- endif %}
+                {{- '<tool_call>\n{"name": "' }}
+                {{- tool_call.name }}
+                {{- '", "arguments": ' }}
+                {%- if tool_call.arguments is string %}
+                    {{- tool_call.arguments }}
+                {%- else %}
+                    {{- tool_call.arguments | tojson }}
+                {%- endif %}
+                {{- '}\n</tool_call>' }}
+            {%- endfor %}
+        {%- endif %}
+        {{- '<|im_end|>\n' }}
+    {%- elif message.role == "tool" %}
+        {%- if loop.first or (messages[loop.index0 - 1].role != "tool") %}
+            {{- '<|im_start|>user' }}
+        {%- endif %}
+        {{- '\n<tool_response>\n' }}
+        {{- message.content }}
+        {{- '\n</tool_response>' }}
+        {%- if loop.last or (messages[loop.index0 + 1].role != "tool") %}
+            {{- '<|im_end|>\n' }}
+        {%- endif %}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|im_start|>assistant\n' }}
+    {%- if enable_thinking is defined and enable_thinking is false %}
+        {{- '<think>\n\n</think>\n\n' }}
+    {%- endif %}
+{%- endif %})";
+
+        std::string qwen_25_7b_tmpl = R"(
+{%- if tools %}
+    {{- '<|im_start|>system\n' }}
+    {%- if messages[0]['role'] == 'system' %}
+        {{- messages[0]['content'] }}
+    {%- else %}
+        {{- 'You are Qwen, created by Alibaba Cloud. You are a helpful assistant.' }}
+    {%- endif %}
+    {{- "\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>" }}
+    {%- for tool in tools %}
+        {{- "\n" }}
+        {{- tool | tojson }}
+    {%- endfor %}
+    {{- "\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{{\"name\": <function-name>, \"arguments\": <args-json-object>}}\n</tool_call><|im_end|>\n" }}
+{%- else %}
+    {%- if messages[0]['role'] == 'system' %}
+        {{- '<|im_start|>system\n' + messages[0]['content'] + '<|im_end|>\n' }}
+    {%- else %}
+        {{- '<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>\n' }}
+    {%- endif %}
+{%- endif %}
+{%- for message in messages %}
+    {%- if (message.role == "user") or (message.role == "system" and not loop.first) or (message.role == "assistant" and not message.tool_calls) %}
+        {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>' + '\n' }}
+    {%- elif message.role == "assistant" %}
+        {{- '<|im_start|>' + message.role }}
+        {%- if message.content %}
+            {{- '\n' + message.content }}
+        {%- endif %}
+        {%- for tool_call in message.tool_calls %}
+            {%- if tool_call.function is defined %}
+                {%- set tool_call = tool_call.function %}
+            {%- endif %}
+            {{- '\n<tool_call>\n{"name": "' }}
+            {{- tool_call.name }}
+            {{- '", "arguments": ' }}
+            {{- tool_call.arguments | tojson }}
+            {{- '}\n</tool_call>' }}
+        {%- endfor %}
+        {{- '<|im_end|>\n' }}
+    {%- elif message.role == "tool" %}
+        {%- if (loop.index0 == 0) or (messages[loop.index0 - 1].role != "tool") %}
+            {{- '<|im_start|>user' }}
+        {%- endif %}
+        {{- '\n<tool_response>\n' }}
+        {{- message.content }}
+        {{- '\n</tool_response>' }}
+        {%- if loop.last or (messages[loop.index0 + 1].role != "tool") %}
+            {{- '<|im_end|>\n' }}
+        {%- endif %}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|im_start|>assistant\n' }}
+{%- endif %}
+)";
+
+        std::string oai_input_str_1 = R"(
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can use tools to get information for the user."
+    },
+    {
+      "role": "user",
+      "content": "What's the weather like in New York?"
+    }
+  ],
+  "add_generation_prompt": true
+}
+)";
+
+        std::string oai_input_str_2 = R"(
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a helpful assistant that can use tools to get information for the user."
+    },
+    {
+      "role": "user",
+      "content": "What's the weather like in New York?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather information for a location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. San Francisco, CA"
+            },
+            "unit": {
+              "type": "string",
+              "enum": [
+                "celsius",
+                "fahrenheit"
+              ],
+              "description": "The unit of temperature to use"
+            }
+          },
+          "required": [
+            "location"
+          ]
+        }
+      }
+    }
+  ],
+  "add_generation_prompt": true
+}
+)";
+        // std::string & template_jinja = qwen_25_7b_tmpl;
+        std::string & template_jinja = qwen3_8b_tmpl;
+        std::string & oai_str        = oai_input_str_2;
+
+        json oai_js      = json::parse(oai_str);
+        json messages_js = oai_js.at("messages");
+
+        std::string bos_token = "";
+        std::string eos_token = "";
+
+        std::vector<common_chat_msg> messages = common_chat_msgs_parse_oaicompat(messages_js);
+
+        json tools_js                       = oai_js.at("tools");
+        std::vector<common_chat_tool> tools = common_chat_tools_parse_oaicompat(tools_js);
+
+        const auto add_generation_prompt = true;
+
+        common_chat_templates_inputs inputs;
+        inputs.use_jinja             = true;
+        inputs.messages              = messages;
+        inputs.add_generation_prompt = add_generation_prompt;
+        inputs.tools                 = tools;
+
+        auto tmpls  = common_chat_templates_init(/* model= */ nullptr, template_jinja.c_str(), bos_token, eos_token);
+        auto output = common_chat_templates_apply(tmpls.get(), inputs).prompt;
+
+        std::cout << "\n>>>>>>>>>>>>\n";
+        std::cout << output;
+        std::cout << "\n<<<<<<<<<<<<\n";
     }
 }
 

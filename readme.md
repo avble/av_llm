@@ -2,17 +2,28 @@
 
 - Gen AI stuff
 
-## News
+## Demos
+* Demo chat with Jan AI agent
+<img src="docs/images/01_chat_jan_ai.gif" alt="Demo chat" width="400" />
+<details>
+<summary>
+Demo function calling
+ </summary>
+<img src="docs/images/01_function_call.gif" alt="Demo function call" width="400" />
+ </details>
 
-- Demo MCP: [document](./docs/model.md), search for MCP
-- Demo FIM: [document](./docs/model.md), search for FIM
-- Demo Code Completion: [document](./docs/model.md), search for code completion
+ <details>
+ <summary>
+Demo Code Completion
+</summary>  
+<img src="docs/images/02_code_completion.gif" alt="Demo code completion" width="400" />
+</details>
 
 ## What it has?
-### C++ server for serving LLM inference
+### [Endpoint] C++ server for serving LLM inference
 <details>
  <summary>
-[Endpoint][open-ai] Completions
+[open-ai] Completions
   </summary>
  
    - [x] Default
@@ -20,18 +31,18 @@
 </details>
 <details>
  <summary>
-[Endpoint][open-ai] Chat completions
+[open-ai] Chat completions
   </summary>
  
    - [x] Default
    - [x] stream
    - [ ] Image input
-   - [ ] function
+   - [x] function
    - [ ] Logbrobs
 </details>
 <details>
  <summary>
-[Endpoint] Models 
+[open-ai] Models 
   </summary>
  
    - [x] list models  
@@ -39,8 +50,21 @@
    - [ ] delete a model
 </details>
 
+[open-ai] Embeddings 
+
 <details>
- <summary> [Endpoint] FIM (Fill-In-Middle) </summary>
+ <summary>
+ollama 
+  </summary>
+ 
+   - [x] /api/tags
+   - [x] /api/show  
+   - [x] /api/chat 
+   - [ ] /api/generate
+</details>
+
+<details>
+ <summary> FIM (Fill-In-Middle) </summary>
  
 - [x] File-level 
 - [ ] Rep-level
@@ -74,8 +98,6 @@ $av_llm chat <path to module .gguf file>
 ```shell
 $av_llm serve <path to module .gguf file>
 ```
-
-![demo-1](image/demo_4.png?raw=true)
 
 ## Installation
 <details>
