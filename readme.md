@@ -9,10 +9,10 @@
 - Demo Code Completion: [document](./docs/model.md), search for code completion
 
 ## What it has?
-### C++ server for serving LLM inference
+### [Endpoint] C++ server for serving LLM inference
 <details>
  <summary>
-[Endpoint][open-ai] Completions
+[open-ai] Completions
   </summary>
  
    - [x] Default
@@ -20,7 +20,7 @@
 </details>
 <details>
  <summary>
-[Endpoint][open-ai] Chat completions
+[open-ai] Chat completions
   </summary>
  
    - [x] Default
@@ -31,7 +31,7 @@
 </details>
 <details>
  <summary>
-[Endpoint][open-ai] Models 
+[open-ai] Models 
   </summary>
  
    - [x] list models  
@@ -39,11 +39,11 @@
    - [ ] delete a model
 </details>
 
-   - [x] [Endpoint][open-ai] Embeddings 
+[open-ai] Embeddings 
 
 <details>
  <summary>
-[Endpoint] ollama 
+ollama 
   </summary>
  
    - [x] /api/tags
@@ -52,10 +52,8 @@
    - [ ] /api/generate
 </details>
 
-    - [x] /convert/oai_to_text
-
 <details>
- <summary> [Endpoint] FIM (Fill-In-Middle) </summary>
+ <summary> FIM (Fill-In-Middle) </summary>
  
 - [x] File-level 
 - [ ] Rep-level
@@ -89,8 +87,6 @@ $av_llm chat <path to module .gguf file>
 ```shell
 $av_llm serve <path to module .gguf file>
 ```
-
-![demo-1](image/demo_4.png?raw=true)
 
 ## Installation
 <details>
