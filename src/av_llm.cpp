@@ -217,7 +217,7 @@ int main(int argc, char ** argv)
     // ---- SERVE command ----
     auto serve = app.add_subcommand("serve", "Serve model");
     serve->add_option("-p,--port", xoptions_.port, "Serve port");
-    serve->add_option("--nparallel", xoptions_.n_parallel, "Number of parallel requests");
+    serve->add_option("--np", xoptions_.n_parallel, "Number of parallel requests");
     serve->add_option("--emb-model", xoptions_.model_path_emb, "Embedding Model path");
     serve->add_option("url-or-alias", xoptions_.model_url_or_alias, "Model path");
 

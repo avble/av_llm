@@ -1,6 +1,8 @@
 ## Overview
 
-- C++ server for serving the LLM inference (based on llama.cpp)
+- Develop a C++ server for serving the LLM inference
+- LLM inference engine based on [llama.cpp]
+- Perdiodically sync with upstream [llama.cpp]
 - Explore the LLM model
 
 ## Demos
@@ -71,13 +73,6 @@ ollama
 - [ ] Rep-level
  </details>
  
-### Some examples
-|Item                 |Brief                                              |link                           |
-|-------------------- |-------------------------------------------------- |------------------------------ |
-|gen                  |given input, generate the sequence of text         |[example/avllm_gen.cpp](example/avllm_gen.cpp) |
-|chat                 |given chatML format, generate the sequence of text |[example/avllm_gen.cpp](example/avllm_chat.cpp) |
-|embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
-
 
 ## Models
 [details](docs/model.md)
@@ -89,16 +84,20 @@ ollama
 | [Qwen2.5-Coder-3B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen2.5-Coder-3B-Instruct-Q8_0-GGUF) |       | chat, coding, FIM   |         |
 |                                                                                                   |       |               |         |
 
+## work log 
+| Date       | Work log                                                                 |
+|------------|--------------------------------------------------------------------------|
+| 2025-07-24 | Sync with upstream of [llama.cpp]                    |
+| 2025-07-23 | Finalize initial base version: server, command line    |
 
-## Quick started
 
-```shell
-$av_llm chat <path to module .gguf file>
-```
+### Some tools 
+|Item                 |Brief                                              |link                           |
+|-------------------- |-------------------------------------------------- |------------------------------ |
+|gen                  |given input, generate the sequence of text         |[example/avllm_gen.cpp](example/avllm_gen.cpp) |
+|chat                 |given chatML format, generate the sequence of text |[example/avllm_gen.cpp](example/avllm_chat.cpp) |
+|embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
 
-```shell
-$av_llm serve <path to module .gguf file>
-```
 
 ## Installation
 <details>

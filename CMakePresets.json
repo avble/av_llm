@@ -47,6 +47,12 @@
 				"LLAMA_BUILD_SERVER": "ON"
 			}
 		},
+		{"name": "llama-ggml",
+			"hidden": true,
+			"cacheVariables": {
+				"GGML_NATIVE": "OFF"
+			}
+		},
 		{
 			"name": "llama-debug",
 			"inherits": "llama",
@@ -99,13 +105,25 @@
 		{ "name": "x64-apple-clang-release", "inherits": [ "base-ninja", "llama-release", "reldbg" ] },
 
 
-		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama-debug", "debug" ] },
-		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama-release", "release" ] },
+		{ "name": "x64-windows-debug", "inherits": [ "base-ninja", "llama-debug", "debug" ],
+			"cacheVariables": {
+				"BUILD_SHARED_LIBS": "OFF"
+			}
+		},
+		{ "name": "x64-windows-release", "inherits": [ "base-ninja", "llama-release", "llama-ggml", "release" ],
+			"cacheVariables": {
+				"BUILD_SHARED_LIBS": "OFF"
+			}
+		},
 
 		{ "name": "x64-windows", "inherits": [ "base-vs", "llama-release", "reldbg" ] },
 
 		{ "name": "x64-windows-vulkan-debug", "inherits": [ "base-ninja", "vulkan", "llama-debug", "debug"] },
-		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama-release", "release"] },
+		{ "name": "x64-windows-vulkan-release", "inherits": [ "base-ninja", "vulkan", "llama-release", "release"],
+			"cacheVariables": {
+				"BUILD_SHARED_LIBS": "OFF"
+			}
+		},
 
 		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "llama-debug", "debug" ] },
 		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "llama-release", "release" ] }
