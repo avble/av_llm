@@ -16,6 +16,7 @@ using json = nlohmann::ordered_json;
 #include <iostream>
 #include <map>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef _MSC_VER
@@ -73,7 +74,6 @@ TEST_CASE("llama_arg_parser")
             }
         };
 
-        // prepare data
         std::map<std::string, int> data; /* = { { "row-1", { "item 1", "item 2", "", "item 4" } },
                                                                  { "row-2", { "item 1", "", "item 3", "item 4" } } }; */
 
@@ -581,15 +581,89 @@ TEST_CASE("test_chat_template")
     }
 }
 
-TEST_CASE("test")
+int context_gen_text_until_eog(llama_context * ctx, std::vector<llama_token> & prompt_tokens, llama_sampler * smpl)
 {
-#ifdef _WIN32
-    char * env = std::getenv("USERPROFILE");
-    if (env == nullptr)
-        std::cout << "null" << std::endl;
-    else
-        std::cout << std::string(env) << std::endl;
-#endif
+    llama_token new_token;
+    const llama_model * model = llama_get_model(ctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+
+    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+
+    int count = 1;
+
+    while (count++ < 10)
+    {
+        int n_ctx      = llama_n_ctx(ctx);
+        int n_ctx_used = llama_kv_self_used_cells(ctx);
+
+        if (n_ctx_used + batch.n_tokens > n_ctx)
+        {
+            printf("%s: the context is exceeded. \n", __func__);
+            return -1;
+        }
+
+        if (llama_decode(ctx, batch))
+        {
+            printf("%s : failed to eval, return code %d\n", __func__, 1);
+            return -1;
+        }
+
+        new_token = llama_sampler_sample(smpl, ctx, -1);
+        if (llama_vocab_is_eog(vocab, new_token))
+        {
+            break;
+        }
+
+        char buf[100];
+        int n = llama_token_to_piece(vocab, new_token, buf, sizeof(buf), 0, true);
+        if (n < 0)
+        {
+            printf("%s, failed to convert a token \n", __func__);
+            return -1;
+        }
+
+        std::string out(buf, n);
+        std::cout << out;
+
+        batch = llama_batch_get_one(&new_token, 1);
+    }
+
+    return 0; // return -1 means end of the ctx_session_ session
+};
+
+TEST_CASE("test_context_01")
+{
+
+    ggml_backend_load_all();
+    llama_model_params model_param = llama_model_default_params();
+    model_param.n_gpu_layers       = 99;
+    std::string str                = "hello world";
+
+    llama_model * model       = llama_load_model_from_file("../../../model/qwen2.5-coder-3b-instruct-q8_0.gguf", model_param);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
+    int n_token               = -llama_tokenize(vocab, str.data(), str.size(), NULL, 0, true, true);
+    std::vector<llama_token> tokens(n_token);
+    llama_tokenize(vocab, str.data(), str.size(), tokens.data(), tokens.size(), true, true);
+
+    for (int i = 0; i < 30; i++)
+    {
+        llama_context_params ctx_param = llama_context_default_params();
+        llama_context * ctx            = llama_init_from_model(model, ctx_param);
+        llama_context_ptr ctx_ptr(ctx);
+
+        auto sparams          = llama_sampler_chain_default_params();
+        sparams.no_perf       = false;
+        llama_sampler * smpl_ = llama_sampler_chain_init(sparams);
+        llama_sampler_chain_add(smpl_, llama_sampler_init_greedy());
+        auto sampler_default_ptr = llama_sampler_ptr(smpl_);
+
+        context_gen_text_until_eog(ctx_ptr.get(), tokens, sampler_default_ptr.get());
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+
+        // llama_free(ctx);
+    }
+
+    llama_model_free(model);
 }
 
 TEST_CASE("test_fim_model")
