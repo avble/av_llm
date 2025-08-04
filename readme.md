@@ -2,6 +2,7 @@
 
 - Develop a C++ server for serving the LLM inference
 - LLM inference engine based on [llama.cpp]
+  - Pre-allocate the number of context and share among requests
 - Perdiodically sync with upstream [llama.cpp]
 - Explore the LLM model
 
