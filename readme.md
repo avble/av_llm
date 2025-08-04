@@ -87,6 +87,7 @@ ollama
 ## work log 
 | Date       | Work log                                                                 |
 |------------|--------------------------------------------------------------------------|
+| 2025-08-04 | LLM Inference: Pre-allocate the context and sharing amongs requests       |
 | 2025-07-24 | Sync with upstream of [llama.cpp]                    |
 | 2025-07-23 | Finalize initial base version: server, command line    |
 
