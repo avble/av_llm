@@ -277,13 +277,6 @@ int main(int argc, char ** argv)
         return 0;
     }
 
-#if 0
-    if (argc > 1)
-    {
-        execute_char_or_serve(argv[1], chat_cmd_handler);
-    }
-#endif
-
     std::cout << app.help() << std::endl;
 }
 
@@ -538,38 +531,6 @@ static void chat_cmd_handler(std::filesystem::path model_path)
 
 }; // end of chat handler
 
-class context_session : public http::base_data
-{
-public:
-    context_session(const context_session &) = delete;
-    context_session(llama_context_ptr && _ctx) : http::base_data(), ctx(std::move(_ctx))
-    {
-        AVLLM_LOG_TRACE_SCOPE("context_session");
-        chat_message_start = 0;
-        chat_message_end   = 0;
-        chat_message_output.resize(llama_n_ctx(ctx.get()));
-    }
-
-    ~context_session()
-    {
-        // debug
-        AVLLM_LOG_TRACE_SCOPE("~context_session");
-    }
-
-    uint32_t get_n_batch() const { return llama_n_batch(ctx.get()); }
-    uint32_t get_n_ctx() const { return llama_n_ctx(ctx.get()); }
-
-    const llama_model * get_model() const { return llama_get_model(ctx.get()); }
-    llama_context * get_ctx() const { return ctx.get(); }
-
-public:
-    llama_context_ptr ctx;
-    std::vector<char> chat_message_output;
-    int chat_message_start;
-    int chat_message_end;
-    const bool add_generation_prompt = true;
-};
-
 class session_chat_message : public http::base_data
 {
 
@@ -612,89 +573,6 @@ std::string model_oaicompact_to_text(const llama_model * model, const nlohmann::
         AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
     }
     return result;
-};
-
-std::vector<llama_token> context_session_oaicompact_to_tokens(context_session & ctx_session_, const common_chat_templates * tmpl,
-                                                              const std::vector<llama_chat_message> & chat_messages,
-                                                              const json tools_js = json())
-{
-    const llama_context * ctx = ctx_session_.ctx.get();
-    const llama_model * model = llama_get_model(ctx);
-    const llama_vocab * vocab = llama_model_get_vocab(model);
-
-    { // get input string and apply template
-
-        if (!xoptions_.jinja)
-        {
-            // if not jinja, use the old way
-            AVLLM_LOG_DEBUG("%s: using deprecated ctx_session_ template \n", __func__);
-            const char * chat_tmpl = common_chat_templates_source(tmpl);
-
-            int len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                ctx_session_.chat_message_output.data(), ctx_session_.chat_message_output.size());
-
-            if (len > (int) ctx_session_.chat_message_output.size())
-            {
-                ctx_session_.chat_message_output.resize(len);
-                len = llama_chat_apply_template(chat_tmpl, chat_messages.data(), chat_messages.size(), true,
-                                                ctx_session_.chat_message_output.data(), ctx_session_.chat_message_output.size());
-            }
-
-            if (len < 0)
-            {
-                AVLLM_LOG_ERROR("%s: error: failed to apply ctx_session_ template", __func__);
-                return {};
-            }
-
-            ctx_session_.chat_message_start = ctx_session_.chat_message_end;
-            ctx_session_.chat_message_end   = len;
-        }
-        else
-        {
-            std::vector<common_chat_msg> messages;
-            for (const auto & msg : chat_messages)
-            {
-                common_chat_msg chat_msg;
-                chat_msg.role    = msg.role;
-                chat_msg.content = msg.content;
-                messages.push_back(chat_msg);
-            }
-
-            std::string template_jinja = "";
-            std::string tools_str      = tools_js.dump();
-
-            std::vector<common_chat_tool> tools =
-                tools_str != "" ? common_chat_tools_parse_oaicompat(tools_str) : std::vector<common_chat_tool>();
-
-            bool add_generation_prompt = true;
-
-            common_chat_templates_inputs inputs;
-            inputs.use_jinja             = true;
-            inputs.messages              = messages;
-            inputs.add_generation_prompt = add_generation_prompt;
-            inputs.tools                 = tools;
-
-            ctx_session_.chat_message_start  = ctx_session_.chat_message_end;
-            auto prompt_                     = common_chat_templates_apply(tmpl, inputs).prompt;
-            ctx_session_.chat_message_output = std::vector(prompt_.begin(), prompt_.end());
-            ctx_session_.chat_message_end    = ctx_session_.chat_message_output.size();
-        }
-    }
-    std::string prompt(ctx_session_.chat_message_output.begin() + ctx_session_.chat_message_start,
-                       ctx_session_.chat_message_output.begin() + ctx_session_.chat_message_end);
-
-    llama_token new_token;
-    // const llama_vocab * vocab = llama_model_get_vocab(model);
-
-    int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, true, true);
-    std::vector<llama_token> prompt_tokens(n_prompt_tokens);
-
-    if (llama_tokenize(vocab, prompt.data(), prompt.size(), prompt_tokens.data(), prompt_tokens.size(), true, true) < 0)
-    {
-        AVLLM_LOG_ERROR("%s: failed to tokenize the prompt \n", __func__);
-        return {};
-    }
-    return prompt_tokens;
 };
 
 int context_gen_text_until_eog(llama_context * ctx, std::vector<llama_token> & prompt_tokens,
@@ -819,15 +697,6 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
 
             {
-                // context initialize
-                llama_context_params ctx_params = llama_context_default_params();
-                ctx_params.no_perf              = false;
-                ctx_params.n_ctx                = xoptions_.n_ctx;
-                ctx_params.n_batch              = xoptions_.n_batch;
-                ctx_ptr                         = llama_context_ptr(llama_init_from_model(model_ptr.get(), ctx_params));
-            }
-
-            {
                 int n_ctx = std::max(1, xoptions_.n_parallel);
                 n_ctx     = std::min(n_ctx, 16);
                 for (int i = 0; i < n_ctx; i++)
@@ -890,23 +759,6 @@ void server_cmd_handler(std::filesystem::path model_path)
             return tokens;
         };
 
-        llama_context_ptr context_init()
-        {
-
-            llama_context_params ctx_params = llama_context_default_params();
-            llama_model * model             = model_ptr.get();
-            ctx_params.no_perf              = false;
-            ctx_params.n_ctx                = xoptions_.n_ctx;
-            ctx_params.n_batch              = xoptions_.n_batch;
-            return llama_context_ptr(llama_init_from_model(model, ctx_params));
-        };
-
-        llama_context_ptr model_llama_ctx_init_from_params(const llama_context_params & ctx_params)
-        {
-            llama_model * model = model_ptr.get();
-            return llama_context_ptr(llama_init_from_model(model, ctx_params));
-        };
-
         bool is_initialized() const { return initialized; }
 
         llama_model_ptr model_ptr                    = nullptr;
@@ -914,8 +766,8 @@ void server_cmd_handler(std::filesystem::path model_path)
         llama_sampler_ptr sampler_default_ptr        = nullptr;
         std::string model_path;
         bool initialized = false;
+        // llama_context_ptr ctx_ptr;
 
-        llama_context_ptr ctx_ptr;
         std::vector<llama_context_ptr> contexts;
 
     } model_general(model_path.generic_string());
@@ -1109,6 +961,12 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
                                                     res->reqwest().request_id(), "completions_handler")
                                   .c_str())
+
+        llama_context * ctx       = model_general.get_context(ctx_idx);
+        const llama_model * model = llama_get_model(ctx);
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+        llama_sampler * smpl      = model_general.get_sampler();
+
         json body_ = json_parse(res->reqwest().body());
         if (body_.empty())
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
@@ -1122,51 +980,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] max_tokens=%d, prompt=%s, is_stream=%d\n", res->session_id(),
                         res->reqwest().request_id(), max_tokens, prompt.c_str(), is_stream);
 
-        // get vocab
-        auto vocab = llama_model_get_vocab(model_general.model_ptr.get());
-        if (!vocab)
         {
-            AVLLM_LOG_ERROR("%s: error: could not get vocab\n", __func__);
-            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Could not get vocab");
-        }
-
-        // sampler
-        // initialize the sampler
-        llama_sampler_ptr smpl_ = [&vocab, top_k = 40, top_p = 0.9, seed = 123455]() {
-            auto sparams    = llama_sampler_chain_default_params();
-            sparams.no_perf = false;
-            auto smpl       = llama_sampler_chain_init(sparams);
-            llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
-            llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 20));
-            llama_sampler_chain_add(smpl, llama_sampler_init_dist(seed));
-            return llama_sampler_ptr(smpl);
-        }();
-        if (!smpl_)
-        {
-            AVLLM_LOG_ERROR("%s: error: could not create sampling\n", __func__);
-            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Could not create sampler");
-        }
-        if (false)
-        {
-            AVLLM_LOG_DEBUG("%s", "sampler:\n");
-            llama_sampler_print(smpl_.get());
-        }
-
-        {
-            // ensure that the session data is initialized
-            if (!res->session_data())
-            {
-                llama_context_params ctx_params = llama_context_params_from_xoptions(xoptions_);
-                res->session_data() = std::make_unique<context_session>(model_general.model_llama_ctx_init_from_params(ctx_params));
-            }
-
-            context_session * ctx_session_ = reinterpret_cast<context_session *>(res->session_data().get());
-            if (!ctx_session_)
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session is not initialized");
-
-            if (!ctx_session_->ctx)
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Chat session. context is not initialized");
-
             // tokenize the prompt
             auto prompt_tokens = model_general.model_string_to_tokens(prompt);
 
@@ -1195,7 +1009,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     return 0; // continue generation
                 };
 
-                context_gen_text_until_eog(model_general.ctx_ptr.get(), prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
+                context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
 
 #ifndef NDEBUG
                 AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] gen_text=%s\n", res->session_id(), res->reqwest().request_id(),
@@ -1238,7 +1052,7 @@ void server_cmd_handler(std::filesystem::path model_path)
 
                 // start writing chunk
                 res->event_source_start();
-                context_gen_text_until_eog(model_general.ctx_ptr.get(), prompt_tokens, std::ref(gen_text_hdl), smpl_.get());
+                context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
                 res->event_source_oai_end();
             }
         }
@@ -1597,28 +1411,8 @@ void server_cmd_handler(std::filesystem::path model_path)
         int32_t seed    = json_value(body_js, "seed", 4294967295);
         json samplers   = json_value(body_js, "samplers", json::array());
 
-        try
-        {
-            if (!res->session_data())
-            {
-                AVLLM_LOG_INFO("%s: initialize context for session id: %" PRIu64 " \n", "fim_handler", res->session_id());
-                AVLLM_LOG_INFO("%20s:%d", "number of context", xoptions_.n_ctx);
-                llama_context_ptr p = model_general.context_init();
-                if (p)
-                    res->session_data() = std::make_unique<context_session>(std::move(p));
-                else
-                    throw std::runtime_error("can not initalize context");
-            }
-        } catch (const std::exception & e)
-        {
-            AVLLM_LOG_WARN("%s: can not initialize the context \n", __func__);
-            HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Failed to initialize context");
-        }
-
-        context_session * ctx_session_ = reinterpret_cast<context_session *>(res->session_data().get());
-
-        uint32_t n_batch = ctx_session_->get_n_batch();
-        uint32_t n_ctx   = ctx_session_->get_n_ctx();
+        uint32_t n_batch = llama_n_batch(ctx);
+        uint32_t n_ctx   = llama_n_ctx(ctx);
 
         auto tokens = format_infill(vocab, input_prefix, input_suffix, body_js.at("input_extra"), n_batch, n_predict, n_ctx, false,
                                     tokenized_prompts[0]);
@@ -1666,7 +1460,7 @@ void server_cmd_handler(std::filesystem::path model_path)
         }
 
         {
-            context_gen_text_until_eog(model_general.ctx_ptr.get(), tokens, get_text_hdl, smpl_.get());
+            context_gen_text_until_eog(ctx, tokens, get_text_hdl, smpl_.get());
             json body_js;
             body_js["content"] = res_body;
             res->set_content(body_js.dump());
@@ -1688,87 +1482,6 @@ void server_cmd_handler(std::filesystem::path model_path)
         body["uptime"]  = 0;
         res->set_content(body.dump());
         res->end();
-    };
-
-    auto async_thread_wrapper = [&model_general](std::function<void(std::shared_ptr<http::response>)> func_) {
-        return [func_, &model_general](std::shared_ptr<http::response> res) {
-            if (!model_general.is_initialized())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
-                                         "not suppport. the model is not inialized as request");
-            std::thread(func_, res).detach();
-        };
-    };
-
-    // thread-pool
-    struct thread_pool
-    {
-        using function_handler = std::function<void(std::shared_ptr<http::response> &)>;
-        using task             = std::tuple<function_handler, std::shared_ptr<http::response>>;
-        std::queue<task> tasks;
-
-        std::condition_variable cv;
-        std::mutex mutex;
-    } thread_pool_;
-
-    std::atomic<int> thread_worker_cnt(0);
-    auto thread_worker = [&thread_pool_, &thread_worker_cnt, &model_general]() {
-        int identifier                   = thread_worker_cnt++;
-        int chat_message_start           = 0;
-        int chat_message_end             = 0;
-        const bool add_generation_prompt = true;
-        std::vector<char> chat_message_output;
-        chat_message_output.resize(llama_n_ctx(model_general.ctx_ptr.get()));
-        AVLLM_LOG_INFO("[%05d] thread_worker started\n", identifier);
-        while (true)
-        {
-            thread_pool::task task_;
-            {
-                // if queue is empty, wait. Otherwise, process
-                // acquire lock
-                std::unique_lock lk(thread_pool_.mutex);
-                if (thread_pool_.tasks.empty())
-                    thread_pool_.cv.wait(lk);
-                task_ = thread_pool_.tasks.front();
-                thread_pool_.tasks.pop();
-            }
-
-            auto func_ = std::get<0>(task_);
-            auto res_  = std::get<1>(task_);
-
-            auto start = std::chrono::high_resolution_clock::now();
-            // printf("%s", CONSOLE_COLOR_BLUE);
-            AVLLM_LOG_INFO("[%05d][%3d]%20s:%s\n", res_->session_id(), identifier, "thread_worker", "Procesing...");
-            // extract the message data, tokenize it, and process it
-            //
-            //
-            //
-            //
-            func_(res_);
-            auto end      = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-
-            AVLLM_LOG_INFO("[%05d][%3d]%20s:%lld (ms)\n", res_->session_id(), identifier, "duration", duration);
-            AVLLM_LOG_INFO("[%05d][%3d]%20s:%s\n", res_->session_id(), identifier, "worker", "END");
-        }
-    };
-
-    auto async_thread_pool_wrapper = [&model_general, &thread_pool_](std::function<void(std::shared_ptr<http::response>)> func_) {
-        return [func_, &model_general, &thread_pool_](std::shared_ptr<http::response> res) {
-            if (!model_general.is_initialized())
-                HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error,
-                                         "not suppport. the model is not inialized as request");
-
-            {
-                // select the which worker to use
-                std::vector<llama_token> tokens;
-                // send res
-
-                std::lock_guard lk(thread_pool_.mutex);
-                thread_pool_.tasks.push(thread_pool::task(func_, res));
-            }
-
-            thread_pool_.cv.notify_one();
-        };
     };
 
     struct process_request_
@@ -1839,10 +1552,6 @@ void server_cmd_handler(std::filesystem::path model_path)
         res->endend();
     };
 
-    int n_context = std::max(1, xoptions_.n_parallel);
-    n_context     = std::min(n_context, 16);
-    AVLLM_LOG_INFO("Using %d threads for processing requests\n", n_context);
-
     http::route route_;
     // clang-format off
     // web
@@ -1882,7 +1591,6 @@ void server_cmd_handler(std::filesystem::path model_path)
     route_.post("/fim",                  [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(fim_handler), res);
 		});
-    //route_.post("/infill",               async_thread_pool_wrapper(std::ref(fim_handler)));
     route_.post("/infill",                  [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(fim_handler), res);
 		});
