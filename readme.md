@@ -4,7 +4,7 @@
 - LLM inference engine based on [llama.cpp]
   - Pre-allocate the number of context and share among requests
 - Perdiodically sync with upstream [llama.cpp]
-- Explore the LLM model
+- Explore LLM Tasks: general chat, function calling, embedding, 
 
 ## Demos
 * Demo chat with Jan AI agent
@@ -97,8 +97,9 @@ ollama
 |Item                 |Brief                                              |link                           |
 |-------------------- |-------------------------------------------------- |------------------------------ |
 |gen                  |given input, generate the sequence of text         |[example/avllm_gen.cpp](example/avllm_gen.cpp) |
-|chat                 |given chatML format, generate the sequence of text |[example/avllm_gen.cpp](example/avllm_chat.cpp) |
+|chat                 |given chatML format, generate the sequence of text |[example/avllm_chat.cpp](example/avllm_chat.cpp) |
 |embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
+| 
 
 
 ## Installation

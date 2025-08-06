@@ -558,7 +558,7 @@ std::string model_oaicompact_to_text(const llama_model * model, const nlohmann::
     const auto add_generation_prompt = true;
 
     common_chat_templates_inputs inputs;
-    inputs.use_jinja             = true;
+    inputs.use_jinja             = xoptions_.jinja;
     inputs.messages              = messages;
     inputs.add_generation_prompt = add_generation_prompt;
     inputs.tools                 = tools;
@@ -1203,17 +1203,13 @@ void server_cmd_handler(std::filesystem::path model_path)
 
         // sanity check
         if (!model_embedding)
-        {
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Embedding model not available");
-        }
         llama_model * model = model_embedding.get();
 
         json body_js = json_parse(res->reqwest().body());
 
         if (body_js.empty())
-        {
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Invalid request content");
-        }
 
         // fix: the sentence-level embedding
         // context
@@ -1229,9 +1225,8 @@ void server_cmd_handler(std::filesystem::path model_path)
 
         std::string input = json_value(body_js, "input", std::string());
         if (input == "")
-        {
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::internal_server_error, "Empty input text");
-        }
+
         // tokenize the prompt
         auto tokens = [&model, &data = input]() -> std::vector<llama_token> {
             const llama_vocab * const vocab = llama_model_get_vocab(model);
@@ -1484,6 +1479,18 @@ void server_cmd_handler(std::filesystem::path model_path)
         res->end();
     };
 
+    static auto props_handler = [&model_general](std::shared_ptr<http::response> res) {
+        const llama_vocab * vocab = llama_model_get_vocab(model_general.model_ptr.get());
+        json data                 = {
+            { "total_slots", xoptions_.n_parallel },
+            { "model_path", xoptions_.model_url_or_alias },
+            { "bos_token", common_token_to_piece(model_general.get_context(0), llama_vocab_bos(vocab), /* special= */ true) },
+            { "eos_token", common_token_to_piece(model_general.get_context(0), llama_vocab_eos(vocab), /* special= */ true) },
+        };
+        res->set_content(data.dump());
+        res->endend();
+    };
+
     struct process_request_
     {
         using function_handler = std::function<void(std::shared_ptr<http::response>, int)>;
@@ -1570,7 +1577,6 @@ void server_cmd_handler(std::filesystem::path model_path)
 				process_request(std::ref(chat_completions_handler), res); 
 		});
     // oai - completions
-    //route_.post("/completions",          std::ref(completions_handler));
     route_.post("/completions",          [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(completions_handler), res);
 		});
@@ -1591,13 +1597,15 @@ void server_cmd_handler(std::filesystem::path model_path)
     route_.post("/fim",                  [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(fim_handler), res);
 		});
-    route_.post("/infill",                  [&process_request](std::shared_ptr<http::response> res) {
+    route_.post("/infill",               [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(fim_handler), res);
 		});
 		// health
-    route_.get("health", std::ref(health_handler));
+    route_.get("health",                 std::ref(health_handler));
 		// other
-		route_.post("/model/oai_to_text", std::ref(oaicompact_to_text_handler));
+		route_.post("/model/oai_to_text",    std::ref(oaicompact_to_text_handler));
+		// llama.cpp
+    route_.get("/props",                 std::ref(props_handler));
     // clang-format on
 
     AVLLM_LOG_INFO("Server can be accessed at http://127.0.0.1:%d\n", xoptions_.port);

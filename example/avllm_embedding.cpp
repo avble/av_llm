@@ -1,12 +1,13 @@
+/*
+ *
+ */
+
 #include "arg.h"
 #include "common.h"
 #include "llama.h"
-#include "log.h"
-#include "sampling.h"
 
 #include "common.hpp"
 
-#include <iostream>
 #include <string>
 
 /*
@@ -123,5 +124,6 @@ int main(int argc, char * argv[])
 }
 
 /*
-curl 127.0.0.1:8080/v1/embeddings -H "Content-Type: application/json" -d '{"input": "Your text string goes here", "model":"text-embedding-3-small" }'
+curl 127.0.0.1:8080/v1/embeddings -H "Content-Type: application/json" -d '{"input": "Your text string goes here",
+"model":"text-embedding-3-small" }'
 */
