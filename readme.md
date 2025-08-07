@@ -102,7 +102,7 @@ ollama
 |gen                  |given input, generate the sequence of text         |[example/avllm_gen.cpp](example/avllm_gen.cpp) |
 |chat                 |given chatML format, generate the sequence of text |[example/avllm_chat.cpp](example/avllm_chat.cpp) |
 |embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
-| 
+|sentence embedding   |given an query, search for similar sentence        |[example/avllm_sentence_similarity.cpp](example/avllm_sentence_similarity.cpp) | 
 
 
 ## Installation

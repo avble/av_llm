@@ -16,7 +16,7 @@ add_llm_example(avllm_gen)
 add_llm_example(avllm_chat)
 add_llm_example(avllm_cli)
 add_llm_example(avllm_embedding)
-#add_llm_example(llama_embedding)
+add_llm_example(avllm_sentence_similarity)
 
 #add_executable(llama_embedding llama_embedding.cpp) 
 #target_link_libraries(llama_embedding common llama)
