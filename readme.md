@@ -56,7 +56,7 @@ Demo Code Completion
    - [ ] delete a model
 </details>
 
-[open-ai] Embeddings 
+Embeddings 
 
 <details>
  <summary>

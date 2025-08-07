@@ -1,5 +1,6 @@
 /*
- *
+ * given: text
+ * produce the embedding vector
  */
 
 #include "arg.h"
@@ -17,7 +18,17 @@
  */
 int main(int argc, char * argv[])
 {
-    auto print_usage = [](int argc, char * argv[]) { printf("Usage: \n"); };
+    auto print_usage = [](int argc, char * argv[]) {
+        printf("basic Usage: \n");
+        printf("	%s [options] \n", argv[0]);
+        printf("Options:\n");
+        printf("	-m, --model <path>       Path to the model file (required)\n");
+        printf("	-p, --prompt <text>      Text to embed (required)\n");
+        printf("	--embd-normalize         .i.e --embd-normalize 2 . More detail, see description above\n");
+        printf("  --pooling <type>         .i.e --pooling = mean. More detail, see description above\n");
+        printf("	-h, --help               Show this help message\n");
+        printf("\n");
+    };
     common_params params;
 
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_EMBEDDING, print_usage))
@@ -66,7 +77,9 @@ int main(int argc, char * argv[])
         common_batch_add(batch, tokens[pos], pos, { 0 }, true);
 
     // llama_batch_print((const llama_batch *) &batch);
+#ifndef NDEBUG
     llama_batch_print(&batch);
+#endif // NDEBUG
 
     // GGML_ASSERT(llama_decode(ctx, batch) < 0 && "error: can not decode");
     if (llama_decode(ctx, batch) < 0)
@@ -100,30 +113,37 @@ int main(int argc, char * argv[])
     }
 
     // print output
-    if (pooling_type == LLAMA_POOLING_TYPE_NONE)
     {
-        for (int i = 0; i < tokens.size(); i++)
+        int max_print = 10;
+
+        if (pooling_type == LLAMA_POOLING_TYPE_NONE)
         {
-            printf("[Embedding][%3d]: ", i);
-            for (int j = 0; j < 3; j++)
-                printf("%.6f ", *(embeddings.data() + i * n_embd + j));
+            for (int i = 0; i < tokens.size(); i++)
+            {
+                printf("[Embedding][%3d]: ", i);
+                for (int j = 0; j < max_print; j++)
+                    printf("% .6f ", *(embeddings.data() + i * n_embd + j));
+                printf("\n");
+            }
+        }
+        else
+        {
+            for (int i = 0; i < std::min(max_print, n_embd); i++)
+                printf("% .6f ", *(embeddings.data() + i));
+
+            printf("... ");
+
+            for (int i = 0; i < n_embd && i < max_print; i++)
+                printf("% .6f ", *(embeddings.data() + n_embd - 1 - i));
+
             printf("\n");
         }
-    }
-    else
-    {
-        for (int i = 0; i < std::min(3, n_embd); i++)
-            printf("%.6f ", *(embeddings.data() + i));
-        printf("...");
-
-        for (int i = 0; i < n_embd && i < 2; i++)
-            printf("%.6f ", *(embeddings.data() + n_embd - 1 - i));
-
-        printf("\n");
     }
 }
 
 /*
-curl 127.0.0.1:8080/v1/embeddings -H "Content-Type: application/json" -d '{"input": "Your text string goes here",
-"model":"text-embedding-3-small" }'
-*/
+ * model:
+ * Qwen2.5 embedding
+ * Qwen 3 embedding
+ *
+ */
