@@ -18,6 +18,9 @@ add_llm_example(avllm_cli)
 add_llm_example(avllm_embedding)
 add_llm_example(avllm_sentence_similarity)
 
+
+add_subdirectory(semantic_search)
+
 #add_executable(llama_embedding llama_embedding.cpp) 
 #target_link_libraries(llama_embedding common llama)
 # add_executable(avllm_server avllm_server.cpp)

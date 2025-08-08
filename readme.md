@@ -3,7 +3,7 @@
 - LLM inference engine based on [llama.cpp]
   - Pre-allocate the number of context and share among requests
 - Perdiodically sync with upstream [llama.cpp]
-- Explore LLM Tasks: general chat, function calling, embedding, 
+- Explore LLM Tasks: general chat, function calling, embedding, sentence similarity, semantic search, etc.
 
 ## Hot
 - Support for the gpt-oss model
@@ -90,6 +90,8 @@ ollama
 ## work log 
 | Date       | Work log                                                                 |
 |------------|--------------------------------------------------------------------------|
+| 2025-08-09 | Demo: semantic search with sentence embedding and vector database        |
+| 2025-08-08 | Demo the sentence similarity                                             |
 | 2025-08-06 | Sync with upstream of [llama.cpp] and support gpt-oss                    |
 | 2025-08-04 | LLM Inference: Pre-allocate the context and sharing amongs requests       |
 | 2025-07-24 | Sync with upstream of [llama.cpp]                    |
@@ -103,6 +105,7 @@ ollama
 |chat                 |given chatML format, generate the sequence of text |[example/avllm_chat.cpp](example/avllm_chat.cpp) |
 |embedding            |given input, generate a embedding vector           |[example/avllm_embedding.cpp](example/avllm_embedding.cpp) |
 |sentence similarity  |given an query, search for similar sentence        |[example/avllm_sentence_similarity.cpp](example/avllm_sentence_similarity.cpp) | 
+|semantic search      |spit a document into chunks, and search for similar chunks |[example/semantic_search/semantic_search.cpp](example/semantic_search/semantic_search.cpp) |
 
 
 ## Installation
