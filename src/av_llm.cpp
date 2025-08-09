@@ -697,9 +697,9 @@ void server_cmd_handler(std::filesystem::path model_path)
             }
 
             {
-                int n_ctx = std::max(1, xoptions_.n_parallel);
-                n_ctx     = std::min(n_ctx, 16);
-                for (int i = 0; i < n_ctx; i++)
+                int num_context = std::max(1, xoptions_.n_parallel);
+                num_context     = std::min(num_context, 16);
+                for (int i = 0; i < num_context; i++)
                 {
                     llama_context_params ctx_params = llama_context_default_params();
                     llama_model * model             = model_ptr.get();
@@ -898,10 +898,23 @@ void server_cmd_handler(std::filesystem::path model_path)
         res->end();
     };
 
-    static auto api_tags_handler = [](std::shared_ptr<http::response> res) {
+    static auto api_tags_handler = [&model_general](std::shared_ptr<http::response> res) {
+        const llama_model * model = model_general.get_model();
+        const llama_context * ctx = model_general.get_context(0);
+        const llama_vocab * vocab = llama_model_get_vocab(model);
+
+        std::string general_name;
+        general_name.reserve(64);
+        std::string base_name;
+        base_name.reserve(64);
+
+        llama_model_meta_val_str(model, "general.name", general_name.data(), general_name.capacity());
+        llama_model_meta_val_str(model, "base.name", base_name.data(), base_name.capacity());
+        int n_ctx_train = llama_model_n_ctx_train(model);
+
         json resp = { { "models",
-                        { { { "name", "qwen2.5-coder-3b-instruct-q8_0.gguf" },
-                            { "model", "qwen2.5-coder-3b-instruct-q8_0.gguf" },
+                        { { { "name", general_name },
+                            { "model", base_name },
                             { "modified_at", "" },
                             { "size", "" },
                             { "digest", "" },
@@ -919,14 +932,14 @@ void server_cmd_handler(std::filesystem::path model_path)
                                 { "quantization_level", "" } } } } } },
                       { "object", "list" },
                       { "data",
-                        { { { "id", "qwen2.5-coder-3b-instruct-q8_0.gguf" },
+                        { { { "id", general_name },
                             { "object", "model" },
                             { "created", 1752894428 },
                             { "owned_by", "llamacpp" },
                             { "meta",
-                              { { "vocab_type", 2 },
-                                { "n_vocab", 151936 },
-                                { "n_ctx_train", 32768 },
+                              { { "vocab_type", static_cast<int>(llama_vocab_type(vocab)) },
+                                { "n_vocab", llama_vocab_n_tokens(vocab) },
+                                { "n_ctx_train", n_ctx_train },
                                 { "n_embd", 2048 },
                                 { "n_params", 3085938688 },
                                 { "size", 3279519744 } } } } } } };
@@ -935,12 +948,16 @@ void server_cmd_handler(std::filesystem::path model_path)
         res->end();
     };
 
-    auto api_show = [](std::shared_ptr<http::response> res) {
+    auto api_show = [&model_general](std::shared_ptr<http::response> res) {
         AVLLM_LOG_TRACE_SCOPE(
             av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(), res->reqwest().request_id(), "api_show")
                 .c_str())
+
+        const llama_model * model = model_general.get_model();
+        int n_ctx_train           = llama_model_n_ctx_train(model);
+
         json resp = { { "template", "" },
-                      { "model_info", { { "llama.context_length", 4096 } } },
+                      { "model_info", { { "llama.context_length", n_ctx_train } } },
                       { "modelfile", "" },
                       { "parameters", "" },
                       { "details",

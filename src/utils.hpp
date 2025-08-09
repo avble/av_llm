@@ -30,7 +30,7 @@ struct xoptions
 
         repeat_penalty = 1.0;
 
-        n_ctx   = 4096;
+        n_ctx   = 0; // get from model
         n_batch = 4096;
         ngl     = 0;
 
