@@ -1,65 +1,6 @@
 # GPT-OSS 
 
-* Configurable reasoning effort
-
-there are 3 levels: low, medim, high
-
-- given text: 
-
-``` text
-sum from 1 to 100
-```
-
--  The result with low reasoning level
-
-``` text
-<|channel|>analysis<|message|>User asks: "sum 1 to 100". Likely want sum of integers 1 through 100. That's 5050. Provide answer.<|end|><|start|>assistant<|channel|>final<|message|>The sum
- of all integers from 1 to 100 is:
-
-\[
-1 + 2 + 3 + \dots + 100 = \frac{100 \times 101}{2} = 5050
-\]
-```
-
-- the result medium reasoning level 
-
-``` text
-<|channel|>analysis<|message|>The user asks: "sum from 1 to 100". They likely want the sum of integers from 1 to 100. That is 5050. They mig
-ht want the calculation. So answer: 5050. Provide explanation.<|end|><|start|>assistant<|channel|>final<|message|>The sum of all integers fr
-om 1 100 is
-
-\[
-1 + 2 + 3 + \dots + 100 = \frac{100 \times 101}{2} = 5050.
-\]
-
-So the total is **5050**.
-```
-
-- the result with high reasoning level
-
-``` text
-<|channel|>analysis<|message|>The user says: "sum from 1 to 100". They likely want the sum of integers from 1 to 100. That sum is 5050. They
- might want the calculation or the result. The user didn't specify format. So we can respond with the sum: 5050. We can also show the formul
-a: n(n+1)/2 = 100*101/2 = 5050. So answer: 5050. Probably just that.<|end|><|start|>assistant<|channel|>final<|message|>The sum of the integ
-ers from 1 to 100 is  
-
-\[
-1 + 2 + 3 + \dots + 100 = \frac{100 \times 101}{2} = 5050.
-\]
-```
-
-* Fine-tunable
-
-
-* Agentic capabilities
-
-
-
-## Reference
-* https://openai.com/index/gpt-oss-model-card/
-* https://cdn.openai.com/pdf/419b6906-9da6-406c-a19d-1bb078ac7637/oai_gpt-oss_model_card.pdf
-* https://cookbook.openai.com/articles/openai-harmony
-* https://github.com/openai/harmony
+[GPT-OSS](./model_gpt_oss.md)
 
 
 # Qwen3-8B
