@@ -1,5 +1,5 @@
 ## Hot
-- Support for the gpt-oss model and [gpt-evaluation](docs/model_gpt_oss.md)
+- Support for the gpt-oss model and [gpt-oss capability findings](docs/model_gpt_oss.md)
 
 ## Overview
 - Develop a C++ server for serving the LLM inference
