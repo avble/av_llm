@@ -1,12 +1,12 @@
+## Hot
+- Support for the gpt-oss model and [gpt-evaluation](docs/model_gpt_oss.md)
+
 ## Overview
 - Develop a C++ server for serving the LLM inference
 - LLM inference engine based on [llama.cpp]
   - Pre-allocate the number of context and share among requests
 - Perdiodically sync with upstream [llama.cpp]
 - Explore LLM Tasks: general chat, function calling, embedding, sentence similarity, semantic search, etc.
-
-## Hot
-- Support for the gpt-oss model
 
 ## Demos
 * Demo chat with Jan AI agent
