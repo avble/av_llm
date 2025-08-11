@@ -41,16 +41,11 @@ openAI compatible format
 #include "log.h"
 #include "sampling.h"
 
-#include <chrono>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <mutex>
-#include <stdexcept>
 #include <string.h>
-#include <thread>
 #include <vector>
 
 #include <inttypes.h>
@@ -116,115 +111,49 @@ static void print_usage(int, char ** argv)
     printf("\nexample usage:\n");
     printf("\n    %s [Options] -m model.gguf\n", argv[0]);
     printf("Options: \n"
-           "-it: on|off. on or off the interactive mode. default on\n"
+           "-i,--interactive:      enable the interactive mode. More detail, see description\n"
            "\n" // model
-           "-ngl: number of GPU layer\n"
-           "-jinja: jinja file from input. if not set, it is from model\n"
-           "-prompt: text | @file"
+           "-ngl:                  number of GPU layer. More detail, see description\n"
+           "--jinja:               use jinja or not. More detail, see description\n"
+           "--chat-template-file   chat template from file\n"
+           "--jinja-file:          jinja file from input. if not set, it is from model. More detail, see description\n"
            "\n" // context
-           "-c: number of context\n"
+           "-c:                    number of context. More detail, see description\n"
            "");
     printf("\n");
 }
 
-std::string model_path;
-int n_ctx = 2048;
-int n_gl  = 0;
-std::string jinja;
-bool is_interactive = true;
-std::string prompt_text;
+common_params cparams;
+// default
 
 int main(int argc, char ** argv)
 {
 
     try
     {
+        // default
+        cparams.n_ctx       = 0;
+        cparams.use_jinja   = true;
+        cparams.interactive = true;
+        common_params_parse(argc, argv, cparams, LLAMA_EXAMPLE_MAIN, print_usage);
 
-        [&argc, &argv](auto & model_path, auto & n_ctx) { // parsing the argument
-            int i = 0;
-            try
-            {
-                for (int i = 1; i < argc; i++)
-                {
-                    if (strcmp(argv[i], "-m") == 0)
-                    {
-                        if (i + 1 < argc)
-                            model_path = argv[++i];
-                        else
-                            print_usage(1, argv);
-                    }
-                    else if (strcmp(argv[i], "-c") == 0)
-                    {
-                        if (i + 1 < argc)
-                            n_ctx = std::stoi(argv[++i]);
-                        else
-                            print_usage(1, argv);
-                    }
-                    else if (strcmp(argv[i], "-ngl") == 0)
-                    {
-                        if (i + 1 < argc)
-                            n_gl = std::stoi(argv[++i]);
-                        else
-                            print_usage(1, argv);
-                    }
-                    else if (strcmp(argv[i], "-jinja") == 0)
-                    {
-                        if (i + 1 < argc)
-                            jinja = argv[++i];
-                        else
-                            print_usage(1, argv);
-                    }
-                    else if (strcmp(argv[i], "-it") == 0)
-                    {
-                        if (i + 1 < argc)
-                            is_interactive = (strcmp(argv[++i], "on") == 0) ? true : false;
-                        else
-                            print_usage(1, argv);
-                    }
-                    else if (strcmp(argv[i], "-prompt") == 0)
-                    {
-                        if (i + 1 < argc)
-                            prompt_text = argv[++i];
-                        else
-                            print_usage(1, argv);
-                    }
-                }
-            } catch (const std::exception & ex)
-            {
-                fprintf(stdout, "%s:%d , exception: %s \n", __func__, __LINE__, ex.what());
-            }
-        }(model_path, n_ctx);
-        if (model_path.empty() or prompt_text.empty())
+        if (cparams.model.path.empty())
         {
             print_usage(1, argv);
             return 1;
         }
 
-        if (prompt_text.size() > 1 and prompt_text[0] == '@')
+        if (cparams.prompt.size() > 1 and cparams.prompt[0] == '@')
         {
-            std::fstream f_in(prompt_text.substr(1));
+            std::fstream f_in(cparams.prompt.substr(1));
             if (not f_in.is_open())
             {
-                std::cerr << "Could not open file " << prompt_text.substr(1) << std::endl;
+                std::cerr << "Could not open file " << cparams.prompt.substr(1) << std::endl;
                 exit(-1);
             }
             std::stringstream ss;
             ss << f_in.rdbuf();
-            prompt_text = ss.str();
-        }
-
-        if (!jinja.empty())
-        {
-
-            std::fstream f_in(jinja);
-            if (not f_in.is_open())
-            {
-                std::cerr << "Could not open file " << jinja.substr(1) << std::endl;
-                exit(-1);
-            }
-            std::stringstream ss;
-            ss << f_in.rdbuf();
-            jinja = ss.str();
+            cparams.prompt = ss.str();
         }
 
         ggml_backend_load_all();
@@ -232,8 +161,7 @@ int main(int argc, char ** argv)
         // model initialized
         llama_model * model = []() -> llama_model * {
             llama_model_params model_params = llama_model_default_params();
-            model_params.n_gpu_layers       = n_gl;
-            return llama_model_load_from_file(model_path.c_str(), model_params);
+            return llama_model_load_from_file(cparams.model.path.c_str(), model_params);
         }();
         if (model == nullptr)
         {
@@ -245,8 +173,8 @@ int main(int argc, char ** argv)
         llama_context * ctx = [&model]() -> llama_context * {
             llama_context_params ctx_params = llama_context_default_params();
             ctx_params.no_perf              = false;
-            ctx_params.n_ctx                = n_ctx;
-            ctx_params.n_batch              = n_ctx;
+            ctx_params.n_ctx                = cparams.n_ctx;
+            ctx_params.n_batch              = cparams.n_ctx;
 
             return llama_init_from_model(model, ctx_params);
         }();
@@ -277,13 +205,22 @@ int main(int argc, char ** argv)
             return -1;
         }
 
-        json oai_js = json::parse(prompt_text);
+        json oai_js;
+        try
+        {
+            oai_js = json::parse(cparams.prompt);
+        } catch (const json::exception & ex)
+        {
+            std::cerr << "exception: " << ex.what() << std::endl;
+        }
 
-        if (is_interactive)
+        if (cparams.interactive)
         {
 
             // std::string & template_jinja = qwen_25_7b_tmpl;
-            std::string & template_jinja = jinja;
+            std::string & template_jinja = cparams.chat_template;
+
+            printf("[DEBUG] template_jinja: %s\n", template_jinja.c_str());
 
             // parsing the oai input
             std::string bos_token = "";
@@ -304,10 +241,10 @@ int main(int argc, char ** argv)
                     oai_js.contains("add_generation_prompt") ? oai_js.at("add_generation_prompt").get<bool>() : false;
 
                 common_chat_templates_inputs inputs;
-                inputs.use_jinja             = true;
                 inputs.messages              = messages;
                 inputs.add_generation_prompt = add_generation_prompt;
                 inputs.tools                 = tools;
+                inputs.use_jinja             = cparams.use_jinja;
                 return common_chat_templates_apply(tmpls.get(), inputs).prompt;
             };
 
@@ -389,9 +326,13 @@ int main(int argc, char ** argv)
                 std::cout << COLOR_RESET;
             };
 
+            std::cout << "[DEBUG] oai_js: " << oai_js.dump(2) << std::endl;
+
             auto model_prompt_text = oai_js_to_model_text(oai_js);
-            auto prompt_tokens     = tokenize(model_prompt_text);
-            llama_batch batch      = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+            std::cout << "[DEUBG] model_prompt_text: " << model_prompt_text << std::endl;
+
+            auto prompt_tokens = tokenize(model_prompt_text);
+            llama_batch batch  = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
 
             if (llama_decode(ctx, batch))
             {
@@ -589,9 +530,20 @@ int main(int argc, char ** argv)
         llama_sampler_free(smpl);
         llama_free(ctx);
         llama_model_free(model);
+
     } catch (const std::exception & ex)
     {
-        std::cerr << "exception: " << ex.what() << std::endl;
+
+        std::cerr << "Exception: " << ex.what() << std::endl;
     }
+
     return 0;
 }
+
+/*
+ * use-case: function calling
+ * $
+ *
+ *
+ *
+ */
