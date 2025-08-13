@@ -1,3 +1,10 @@
+# Tools
+## Function calling
+<img src="images/function_calling.gif" alt="Demo chat" width="600" />
+
+## Structured Output
+<img src="images/structure_output.gif" alt="Demo function call" width="600" />
+
 
 # Configurable reasoning effort
 
