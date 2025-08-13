@@ -5,7 +5,7 @@
 - Develop a C++ server for serving the LLM inference
 - LLM inference engine based on [llama.cpp]
   - Pre-allocate the number of context and share among requests
-- Perdiodically sync with upstream [llama.cpp]
+- Periodically sync with upstream [llama.cpp]
 - Explore LLM Tasks: general chat, function calling, embedding, sentence similarity, semantic search, etc.
 
 ## Demos
@@ -97,6 +97,7 @@ ollama
 ## work log 
 | Date       | Work log                                                                 |
 |------------|--------------------------------------------------------------------------|
+| 2025-08-13 | Demo: GPT-OSS structured output, function-calling         |
 | 2025-08-09 | Demo: semantic search with sentence embedding and vector database        |
 | 2025-08-08 | Demo the sentence similarity                                             |
 | 2025-08-06 | Sync with upstream of [llama.cpp] and support gpt-oss                    |
