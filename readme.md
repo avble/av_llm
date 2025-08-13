@@ -20,9 +20,9 @@
 
 <details>
 <summary>
-Demo function calling
+Demo function calling (with Qwen model)
  </summary>
-<img src="docs/images/01_function_call.gif" alt="Demo function call" width="400" />
+<img src="docs/images/01_function_call.gif" alt="Demo function call" width="500" />
  </details>
 
  <details>
