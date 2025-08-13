@@ -9,8 +9,15 @@
 - Explore LLM Tasks: general chat, function calling, embedding, sentence similarity, semantic search, etc.
 
 ## Demos
+* GPT-OSS (Function calling)
+<img src="docs/images/function_calling.gif" alt="Demo chat" width="600" />
+
+* GPT-OSS (Structured Output)
+<img src="docs/images/structure_output.gif" alt="Demo function call" width="600" />
+    
 * Demo chat with Jan AI agent
-<img src="docs/images/01_chat_jan_ai.gif" alt="Demo chat" width="400" />
+<img src="docs/images/01_chat_jan_ai.gif" alt="Demo chat" width="600" />
+
 <details>
 <summary>
 Demo function calling
