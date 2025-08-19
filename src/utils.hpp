@@ -30,9 +30,10 @@ struct xoptions
 
         repeat_penalty = 1.0;
 
-        n_ctx   = 0; // get from model
-        n_batch = 4096;
-        ngl     = 0;
+        n_ctx      = 0; // get from model
+        n_batch    = 4096;
+        ngl        = 0;
+        flash_attn = false;
 
         port       = 8080;
         n_parallel = 1;
@@ -47,6 +48,7 @@ struct xoptions
     int n_ctx;
     int n_batch;
     int ngl;
+    bool flash_attn;
     // server
     int port;
     // others

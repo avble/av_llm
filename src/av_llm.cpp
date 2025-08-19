@@ -706,6 +706,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                     ctx_params.no_perf              = false;
                     ctx_params.n_ctx                = xoptions_.n_ctx;
                     ctx_params.n_batch              = xoptions_.n_batch;
+                    // ctx_params.flash_attn           = true;
                     contexts.emplace_back(llama_init_from_model(model_ptr.get(), ctx_params));
                 }
             }
@@ -971,6 +972,98 @@ void server_cmd_handler(std::filesystem::path model_path)
         res->set_header("Content-Type", "application/json");
         res->set_content(resp.dump(4));
         res->end();
+    };
+
+    static auto responses_handler = [&model_general](std::shared_ptr<http::response> res, int ctx_idx) -> void {
+        AVLLM_LOG_TRACE_SCOPE(av_llm::string_format("[%05" PRIu64 "] [%05" PRIu64 "] %s", res->session_id(),
+                                                    res->reqwest().request_id(), "responses_handler")
+                                  .c_str())
+
+        json body_ = json_parse(res->reqwest().body());
+
+        if (body_.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "invalid json");
+
+        // print the body for debugging
+        AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] body: %s", res->session_id(), res->reqwest().request_id(),
+                        body_.dump(4).c_str());
+
+        std::string model_name  = json_value(body_, "model", std::string("model"));
+        std::string input       = json_value(body_, "input", std::string(""));
+        std::string instruction = json_value(body_, "instructions", std::string("continue"));
+
+        if (input.empty())
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Input is required");
+
+        llama_context * ctx       = model_general.get_context(ctx_idx);
+        const llama_model * model = llama_get_model(ctx);
+        llama_sampler * smpl      = model_general.get_sampler();
+        std::string id            = string_generate_random(64);
+        int time                  = std::time(0);
+
+        if (instruction == "restart")
+            llama_memory_clear(llama_get_memory(ctx), true);
+
+        // tokenize the prompt
+        auto prompt_tokens = model_general.model_string_to_tokens(input);
+
+        if (prompt_tokens.size() == 0)
+            HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Tokenization failed - no tokens generated");
+
+        // write above struct in lambda function
+        std::string gen_text;
+        uint32_t completion_tokens  = 0;
+        uint32_t prompt_tokens_size = static_cast<uint32_t>(prompt_tokens.size());
+        auto gen_text_hdl           = [prompt_tokens_size, &gen_text, &completion_tokens](int rc, const std::string & text) -> int {
+            if (completion_tokens >= xoptions_.n_predict)
+                return -1; // end of generation
+            if (rc == 0)
+                gen_text += text;
+
+            completion_tokens++;
+            return 0; // continue generation
+        };
+
+        context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
+        json res_body = {
+            { "id", "resp_" + id },
+            { "object", "response" },
+            { "created_at", time },
+            { "status", "completed" },
+            { "error", nullptr },
+            { "incomplete_details", nullptr },
+            { "instructions", nullptr },
+            { "max_output_tokens", nullptr },
+            { "model", model_name },
+            { "output",
+              { { { "type", "message" },
+                  { "id", "msg_" + id },
+                  { "status", "completed" },
+                  { "role", "assistant" },
+                  { "content",
+                    { { { "type", "output_text" }, { "text", gen_text }, { "annotations", nlohmann::json::array() } } } } } } },
+            { "parallel_tool_calls", true },
+            { "previous_response_id", nullptr },
+            { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
+            { "store", true },
+            { "temperature", 1.0 },
+            { "text", { { "format", { { "type", "text" } } } } },
+            { "tool_choice", "auto" },
+            { "tools", nlohmann::json::array() },
+            { "top_p", 1.0 },
+            { "truncation", "disabled" },
+            { "usage",
+              { { "input_tokens", 36 },
+                { "input_tokens_details", { { "cached_tokens", 0 } } },
+                { "output_tokens", 87 },
+                { "output_tokens_details", { { "reasoning_tokens", 0 } } },
+                { "total_tokens", 123 } } },
+            { "user", nullptr },
+            { "metadata", nlohmann::json::object() }
+        };
+
+        res->set_content(res_body.dump(4));
+        res->endend();
     };
 
     // oai (completions, chat completions, embedding)
@@ -1593,6 +1686,9 @@ void server_cmd_handler(std::filesystem::path model_path)
     route_.post("/api/chat",             [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(chat_completions_handler), res); 
 		});
+		route_.post("/v1/responses",         [&process_request](std::shared_ptr<http::response> res) {
+				process_request(std::ref(responses_handler), res);
+				});
     // oai - completions
     route_.post("/completions",          [&process_request](std::shared_ptr<http::response> res) {
 				process_request(std::ref(completions_handler), res);

@@ -326,10 +326,7 @@ int main(int argc, char ** argv)
                 std::cout << COLOR_RESET;
             };
 
-            std::cout << "[DEBUG] oai_js: " << oai_js.dump(2) << std::endl;
-
             auto model_prompt_text = oai_js_to_model_text(oai_js);
-            std::cout << "[DEUBG] model_prompt_text: " << model_prompt_text << std::endl;
 
             auto prompt_tokens = tokenize(model_prompt_text);
             llama_batch batch  = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
