@@ -15,11 +15,19 @@
 * GPT-OSS (Function calling)
 <img src="docs/images/function_calling.gif" alt="Demo chat" width="600" />
 
-* GPT-OSS (Structured Output)
+<details>
+<summary>
+GPT-OSS (Structured Output)
+ </summary>
 <img src="docs/images/structure_output.gif" alt="Demo function call" width="600" />
-    
-* Demo chat with Jan AI agent
+</details>
+  
+<details>
+<summary>
+Demo chat with Jan AI agent
+ </summary>
 <img src="docs/images/01_chat_jan_ai.gif" alt="Demo chat" width="600" />
+</details>
 
 <details>
 <summary>
