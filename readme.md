@@ -10,7 +10,7 @@
 
 ## Demos
 * GPT-OSS (Web browsing)
-<img src="docs/images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="600" />
+<img src="docs/images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="800" />
 
 * GPT-OSS (Function calling)
 <img src="docs/images/function_calling.gif" alt="Demo chat" width="600" />
