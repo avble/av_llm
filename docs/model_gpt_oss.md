@@ -1,4 +1,8 @@
 # Tools
+
+## Web browsing (tools)
+<img src="images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="600" />
+
 ## Function calling
 <img src="images/function_calling.gif" alt="Demo chat" width="600" />
 
