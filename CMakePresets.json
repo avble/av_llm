@@ -75,7 +75,12 @@
 				"GGML_VULKAN":      "ON"
 			}
 		},
-
+		{ "name": "cuda",
+			"hidden": true,
+			"cacheVariables": {
+				"GGML_CUDA":      "ON"
+			}
+		},
 		{
 			"name": "x64-windows-llvm", "hidden": true,
 			"cacheVariables": {
@@ -124,7 +129,12 @@
 				"BUILD_SHARED_LIBS": "OFF"
 			}
 		},
-
+		{ "name": "x64-windows-cuda-debug", "inherits": [ "base-ninja", "cuda", "llama-debug", "debug"] },
+		{ "name": "x64-windows-cuda-release", "inherits": [ "base-ninja", "cuda", "llama-release", "release"],
+			"cacheVariables": {
+				"BUILD_SHARED_LIBS": "OFF"
+			}
+		},
 		{ "name": "x64-windows-sycl-debug", "inherits": [ "sycl-base", "llama-debug", "debug" ] },
 		{ "name": "x64-windows-sycl-release", "inherits": [ "sycl-base", "llama-release", "release" ] }
 	]

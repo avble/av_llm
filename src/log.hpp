@@ -1,8 +1,10 @@
 #ifndef _AVLLM_LOG_H_
 #define _AVLLM_LOG_H_
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <stdio.h>
 #include <string>
 
@@ -19,7 +21,7 @@ enum class log_level
 namespace {
 // Default log level based on build type
 #ifdef NDEBUG
-static log_level current_log_level = log_level::LOG_DEBUG; // Release build
+static log_level current_log_level = log_level::LOG_INFO; // Release build
 #else
 static log_level current_log_level = log_level::LOG_TRACE; // Debug build
 #endif
@@ -111,27 +113,32 @@ public:
 
     ~logger_function_trace()
     {
+        auto now = std::chrono::system_clock::now();
+
+        int duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time).count();
+
         if (!cls.empty() && !func.empty())
         {
-            log(log_level::LOG_TRACE, "AVLLM", "%s:%s LEAVE\n", cls.c_str(), func.c_str());
+            log(log_level::LOG_TRACE, "AVLLM", "[%06d]ms %s:%s LEAVE\n", duration, cls.c_str(), func.c_str());
         }
         else if (!cls.empty())
         {
-            log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", cls.c_str());
+            log(log_level::LOG_TRACE, "AVLLM", "[%06d]ms %s LEAVE\n", duration, cls.c_str());
         }
         else if (!func.empty())
         {
-            log(log_level::LOG_TRACE, "AVLLM", "%s LEAVE\n", func.c_str());
+            log(log_level::LOG_TRACE, "AVLLM", "[%06d]ms %s LEAVE\n", duration, func.c_str());
         }
         else
         {
-            log(log_level::LOG_TRACE, "AVLLM", "LEAVE\n");
+            log(log_level::LOG_TRACE, "AVLLM", "[%06d]ms LEAVE\n", duration);
         }
     }
 
 private:
     const std::string cls;
     const std::string func;
+    std::chrono::time_point<std::chrono::system_clock> start_time = std::chrono::system_clock::now();
 };
 } // namespace avllm
 

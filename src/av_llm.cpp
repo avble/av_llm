@@ -188,7 +188,8 @@ int main(int argc, char ** argv)
 
     // context
     app.add_option("--ctx", xoptions_.n_ctx, "Number of context")->default_val(std::to_string(xoptions_.n_ctx));
-    app.add_option("--batch", xoptions_.n_batch, "Number of batch")->default_val(std::to_string(xoptions_.n_batch));
+    app.add_option("--n_batch", xoptions_.n_batch, "Number of batch")->default_val(std::to_string(xoptions_.n_batch));
+    app.add_option("--n_ubatch", xoptions_.n_ubatch, "Number of batch")->default_val(std::to_string(xoptions_.n_ubatch));
 
     //
     app.add_option("--ngl", xoptions_.ngl, "Number of context")->default_val(std::to_string(xoptions_.ngl));
@@ -664,7 +665,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 chat_templates_ptr  = common_chat_templates_init(model, "");
                 try
                 {
-                    common_chat_format_example(chat_templates_ptr.get(), false);
+                    common_chat_format_example(chat_templates_ptr.get(), false, {});
                 } catch (const std::exception & e)
                 {
                     AVLLM_LOG_WARN("%s: Chat template parsing error: %s\n", __func__, e.what());
@@ -677,7 +678,7 @@ void server_cmd_handler(std::filesystem::path model_path)
                 {
                     AVLLM_LOG_DEBUG("%s: chat template: %s \n", __func__, common_chat_templates_source(chat_templates_ptr.get()));
                     AVLLM_LOG_DEBUG("%s: chat example: %s \n", __func__,
-                                    common_chat_format_example(chat_templates_ptr.get(), false).c_str());
+                                    common_chat_format_example(chat_templates_ptr.get(), false, {}).c_str());
                 }
             }
 
@@ -706,7 +707,8 @@ void server_cmd_handler(std::filesystem::path model_path)
                     ctx_params.no_perf              = false;
                     ctx_params.n_ctx                = xoptions_.n_ctx;
                     ctx_params.n_batch              = xoptions_.n_batch;
-                    // ctx_params.flash_attn           = true;
+                    ctx_params.n_ubatch             = xoptions_.n_ubatch;
+                    ctx_params.flash_attn           = true;
                     contexts.emplace_back(llama_init_from_model(model_ptr.get(), ctx_params));
                 }
             }
@@ -988,21 +990,36 @@ void server_cmd_handler(std::filesystem::path model_path)
         AVLLM_LOG_DEBUG("[%05" PRIu64 "] [%05" PRIu64 "] body: %s", res->session_id(), res->reqwest().request_id(),
                         body_.dump(4).c_str());
 
-        std::string model_name  = json_value(body_, "model", std::string("model"));
-        std::string input       = json_value(body_, "input", std::string(""));
-        std::string instruction = json_value(body_, "instructions", std::string("continue"));
+        std::string model_name = json_value(body_, "model", std::string("model"));
+        std::string input      = json_value(body_, "input", std::string(""));
+        std::string play       = json_value(body_, "play", std::string("continue"));
+        std::string stops      = json_value(body_, "stops", std::string(""));
+        bool is_stream         = json_value(body_, "stream", bool(false));
 
         if (input.empty())
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Input is required");
 
         llama_context * ctx       = model_general.get_context(ctx_idx);
         const llama_model * model = llama_get_model(ctx);
-        llama_sampler * smpl      = model_general.get_sampler();
         std::string id            = string_generate_random(64);
         int time                  = std::time(0);
 
-        if (instruction == "restart")
+        // llama_sampler * smpl  = model_general.get_sampler();
+        auto sparams         = llama_sampler_chain_default_params();
+        sparams.no_perf      = false;
+        llama_sampler * smpl = llama_sampler_chain_init(sparams);
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_k(10));
+        llama_sampler_chain_add(smpl, llama_sampler_init_temp(1.0f));
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(1.0f, 0.05));
+        llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+        // llama_sampler_chain_add(smpl, llama_sampler_init_dist(time));
+        auto smpl_response = llama_sampler_ptr(smpl);
+
+        if (play == "restart")
+        {
+            AVLLM_LOG_TRACE("play: %s \n", play.c_str());
             llama_memory_clear(llama_get_memory(ctx), true);
+        }
 
         // tokenize the prompt
         auto prompt_tokens = model_general.model_string_to_tokens(input);
@@ -1010,60 +1027,321 @@ void server_cmd_handler(std::filesystem::path model_path)
         if (prompt_tokens.size() == 0)
             HTTP_SEND_RES_AND_RETURN(res, http::status_code::bad_request, "Tokenization failed - no tokens generated");
 
-        // write above struct in lambda function
-        std::string gen_text;
-        uint32_t completion_tokens  = 0;
-        uint32_t prompt_tokens_size = static_cast<uint32_t>(prompt_tokens.size());
-        auto gen_text_hdl           = [prompt_tokens_size, &gen_text, &completion_tokens](int rc, const std::string & text) -> int {
-            if (completion_tokens >= xoptions_.n_predict)
-                return -1; // end of generation
-            if (rc == 0)
-                gen_text += text;
+        static auto response_created = [&]() -> json {
+            json data = { { "type", "response.created" },
+                          { "response",
+                            { { "id", "resp_" + id },
+                              { "object", "response" },
+                              { "created_at", time },
+                              { "status", "in_progress" },
+                              { "error", nullptr },
+                              { "incomplete_details", nullptr },
+                              { "instructions", "You are a helpful assistant." },
+                              { "max_output_tokens", nullptr },
+                              { "model", model_name },
+                              { "output", json::array() },
+                              { "parallel_tool_calls", true },
+                              { "previous_response_id", nullptr },
+                              { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
+                              { "store", true },
+                              { "temperature", 1.0 },
+                              { "text", { { "format", { { "type", "text" } } } } },
+                              { "tool_choice", "auto" },
+                              { "tools", json::array() },
+                              { "top_p", 1.0 },
+                              { "truncation", "disabled" },
+                              { "usage", nullptr },
+                              { "user", nullptr },
+                              { "metadata", json::object() } } } };
 
-            completion_tokens++;
-            return 0; // continue generation
+            return data;
         };
 
-        context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
-        json res_body = {
-            { "id", "resp_" + id },
-            { "object", "response" },
-            { "created_at", time },
-            { "status", "completed" },
-            { "error", nullptr },
-            { "incomplete_details", nullptr },
-            { "instructions", nullptr },
-            { "max_output_tokens", nullptr },
-            { "model", model_name },
-            { "output",
-              { { { "type", "message" },
-                  { "id", "msg_" + id },
-                  { "status", "completed" },
-                  { "role", "assistant" },
-                  { "content",
-                    { { { "type", "output_text" }, { "text", gen_text }, { "annotations", nlohmann::json::array() } } } } } } },
-            { "parallel_tool_calls", true },
-            { "previous_response_id", nullptr },
-            { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
-            { "store", true },
-            { "temperature", 1.0 },
-            { "text", { { "format", { { "type", "text" } } } } },
-            { "tool_choice", "auto" },
-            { "tools", nlohmann::json::array() },
-            { "top_p", 1.0 },
-            { "truncation", "disabled" },
-            { "usage",
-              { { "input_tokens", 36 },
-                { "input_tokens_details", { { "cached_tokens", 0 } } },
-                { "output_tokens", 87 },
-                { "output_tokens_details", { { "reasoning_tokens", 0 } } },
-                { "total_tokens", 123 } } },
-            { "user", nullptr },
-            { "metadata", nlohmann::json::object() }
+        static auto response_in_progress = [&]() -> json {
+            json j = { { "type", "response.in_progress" },
+                       { "response",
+                         { { "id", "resp_" + id },
+                           { "object", "response" },
+                           { "created_at", time },
+                           { "status", "in_progress" },
+                           { "error", nullptr },
+                           { "incomplete_details", nullptr },
+                           { "instructions", "You are a helpful assistant." },
+                           { "max_output_tokens", nullptr },
+                           { "model", model_name },
+                           { "output", json::array() },
+                           { "parallel_tool_calls", true },
+                           { "previous_response_id", nullptr },
+                           { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
+                           { "store", true },
+                           { "temperature", 1.0 },
+                           { "text", { { "format", { { "type", "text" } } } } },
+                           { "tool_choice", "auto" },
+                           { "tools", json::array() },
+                           { "top_p", 1.0 },
+                           { "truncation", "disabled" },
+                           { "usage", nullptr },
+                           { "user", nullptr },
+                           { "metadata", json::object() } } } };
+
+            return j;
         };
 
-        res->set_content(res_body.dump(4));
-        res->endend();
+        static auto response_output_item_added = [&]() -> json {
+            json data = { { "type", "response.output_item.added" },
+                          { "output_index", 0 },
+                          { "item",
+                            { { "id", "msg_" + id },
+                              { "type", "message" },
+                              { "status", "in_progress" },
+                              { "role", "assistant" },
+                              { "content", json::array() } } } };
+            return data;
+        };
+
+        static auto response_content_part_added = [&]() -> json {
+            json data = { { "type", "response.content_part.added" },
+                          { "item_id", "msg_" + id },
+                          { "output_index", 0 },
+                          { "content_index", 0 },
+                          { "part", { { "type", "output_text" }, { "text", "" }, { "annotations", json::array() } } } };
+
+            return data;
+        };
+
+        static auto response_output_text_delta = [&](std::string delta) -> json {
+            json data = { { "type", "response.output_text.delta" },
+                          { "item_id", "msg_" + id },
+                          { "output_index", 0 },
+                          { "content_index", 0 },
+                          { "delta", delta } };
+
+            return data;
+        };
+
+        static auto response_output_text_done = [&](std::string text) -> json {
+            json data = { { "type", "response.output_text.done" },
+                          { "item_id", "msg_" + id },
+                          { "output_index", 0 },
+                          { "content_index", 0 },
+                          { "text", text } };
+
+            return data;
+        };
+
+        static auto response_content_part_done = [&](std::string text) -> json {
+            json data = { { "type", "response.output_text.done" },
+                          { "item_id", "msg_" + id },
+                          { "output_index", 0 },
+                          { "content_index", 0 },
+                          { "text", text } };
+
+            return data;
+        };
+
+        static auto response_output_item_done = [&](std::string text) {
+            json data = {
+                { "type", "response.output_item.done" },
+                { "output_index", 0 },
+                { "item",
+                  { { "id", "msg_" + id },
+                    { "type", "message" },
+                    { "status", "completed" },
+                    { "role", "assistant" },
+                    { "content",
+                      json::array({ { { "type", "output_text" }, { "text", text }, { "annotations", json::array() } } }) } } }
+            };
+            return data;
+        };
+
+        static auto response_completed = [&](std::string text) -> json {
+            json data = { { "type", "response.completed" },
+                          { "response",
+                            { { "id", "resp_" + id },
+                              { "object", "response" },
+                              { "created_at", time },
+                              { "status", "completed" },
+                              { "error", nullptr },
+                              { "incomplete_details", nullptr },
+                              { "instructions", "You are a helpful assistant." },
+                              { "max_output_tokens", nullptr },
+                              { "model", model_name },
+                              { "output",
+                                json::array({ { { "id", "msg_" + id },
+                                                { "type", "message" },
+                                                { "status", "completed" },
+                                                { "role", "assistant" },
+                                                { "content",
+                                                  json::array({ { { "type", "output_text" },
+                                                                  { "text", text },
+                                                                  { "annotations", json::array() } } }) } } }) },
+                              { "parallel_tool_calls", true },
+                              { "previous_response_id", nullptr },
+                              { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
+                              { "store", true },
+                              { "temperature", 1.0 },
+                              { "text", { { "format", { { "type", "text" } } } } },
+                              { "tool_choice", "auto" },
+                              { "tools", json::array() },
+                              { "top_p", 1.0 },
+                              { "truncation", "disabled" },
+                              { "usage",
+                                { { "input_tokens", 37 },
+                                  { "output_tokens", 11 },
+                                  { "output_tokens_details", { { "reasoning_tokens", 0 } } },
+                                  { "total_tokens", 48 } } },
+                              { "user", nullptr },
+                              { "metadata", json::object() } } } };
+
+            return data;
+        };
+
+        if (is_stream)
+        {
+            std::string gen_text;
+            uint32_t completion_tokens  = 0;
+            uint32_t prompt_tokens_size = static_cast<uint32_t>(prompt_tokens.size());
+            bool is_end_of_gen_found    = false;
+
+            auto gen_text_hdl = [prompt_tokens_size, &gen_text, &completion_tokens, &res, &stops,
+                                 &is_end_of_gen_found](int rc, const std::string & text) -> int {
+                if (completion_tokens >= xoptions_.n_predict)
+                {
+                    AVLLM_LOG_WARN("token is exceeded : %d:%d \n", completion_tokens, xoptions_.n_predict);
+                    res->chunk_write_async("event: response.output_text.done\n");
+                    res->chunk_write_async("data: " + response_output_text_done(gen_text).dump() + "\n\n");
+                    return -1; // end of generation
+                }
+                if (rc == 0 and not is_end_of_gen_found)
+                {
+                    std::cout << text;
+                    res->chunk_write_async("event: response.output_text.delta\n");
+                    res->chunk_write_async("data: " + response_output_text_delta(text).dump() + "\n\n");
+                    gen_text += text;
+
+                    if (not stops.empty() and text.find(stops) != std::string::npos)
+                    {
+                        // std::cou << "found } \n";
+                        // res->chunk_write_async("event: response.output_text.done\n");
+                        // res->chunk_write_async("data: " + response_output_text_done(gen_text).dump() + "\n\n");
+                        // return -1;
+                        is_end_of_gen_found = true;
+                    }
+                }
+                else if (rc == 0 and is_end_of_gen_found)
+                {
+                    AVLLM_LOG_WARN("expected the eog: %s \n", text.c_str());
+                    completion_tokens++;
+                    res->chunk_write_async("event: response.output_text.done\n");
+                    res->chunk_write_async("data: " + response_output_text_done(gen_text).dump() + "\n\n");
+                    return -1;
+                }
+                else
+                {
+                    res->chunk_write_async("event: response.output_text.done\n");
+                    res->chunk_write_async("data: " + response_output_text_done(gen_text).dump() + "\n\n");
+                }
+
+                completion_tokens++;
+                return 0; // continue generation
+            };
+
+            res->chunk_start_async();
+            res->chunk_write_async("event: response.created\n");
+            res->chunk_write_async("data: " + response_created().dump() + "\n\n");
+            res->chunk_write_async("event: response.in_progress\n");
+            res->chunk_write_async("data: " + response_in_progress().dump() + "\n\n");
+            res->chunk_write_async("event: response.output_item.added\n");
+            res->chunk_write_async("data: " + response_output_item_added().dump() + "\n\n");
+            res->chunk_write_async("event: response.content_part.added\n");
+            res->chunk_write_async("data: " + response_content_part_added().dump() + "\n\n");
+            context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
+            res->chunk_write_async("event: response.content_part.done\n");
+            res->chunk_write_async("data: " + response_content_part_done(gen_text).dump() + "\n\n");
+            res->chunk_write_async("event: response.output_item.done\n");
+            res->chunk_write_async("data: " + response_output_item_done("").dump() + "\n\n");
+            res->chunk_write_async("event: response.completed\n");
+            res->chunk_write_async("data: " + response_completed("").dump() + "");
+            res->chunk_end_async();
+        }
+        else
+        {
+            // write above struct in lambda function
+            std::string gen_text;
+            uint32_t completion_tokens  = 0;
+            uint32_t prompt_tokens_size = static_cast<uint32_t>(prompt_tokens.size());
+            bool is_end_of_gen_found    = false;
+
+            auto gen_text_hdl = [prompt_tokens_size, &gen_text, &completion_tokens, &stops,
+                                 &is_end_of_gen_found](int rc, const std::string & text) -> int {
+                if (completion_tokens >= xoptions_.n_predict)
+                {
+                    AVLLM_LOG_WARN("token is exceeded : %d:%d \n", completion_tokens, xoptions_.n_predict);
+                    return -1; // end of generation
+                }
+                if (rc == 0 and not is_end_of_gen_found)
+                {
+                    gen_text += text;
+                    if (not stops.empty() and text.find(stops) != std::string::npos)
+                    {
+                        // std::cou << "\nfound } \n";
+                        // std::cou << gen_text << std::endl;
+                        is_end_of_gen_found = true;
+                    }
+                }
+                else if (rc == 0 and is_end_of_gen_found)
+                {
+                    AVLLM_LOG_WARN("expected the eog: %s \n", text.c_str());
+                    completion_tokens++;
+                    return -1;
+                }
+
+                completion_tokens++;
+                // std::cout << std::flush;
+                return 0; // continue generation
+            };
+
+            context_gen_text_until_eog(ctx, prompt_tokens, std::ref(gen_text_hdl), smpl);
+            json res_body = {
+                { "id", "resp_" + id },
+                { "object", "response" },
+                { "created_at", time },
+                { "status", "completed" },
+                { "error", nullptr },
+                { "incomplete_details", nullptr },
+                { "instructions", nullptr },
+                { "max_output_tokens", nullptr },
+                { "model", model_name },
+                { "output",
+                  { { { "type", "message" },
+                      { "id", "msg_" + id },
+                      { "status", "completed" },
+                      { "role", "assistant" },
+                      { "content",
+                        { { { "type", "output_text" }, { "text", gen_text }, { "annotations", nlohmann::json::array() } } } } } } },
+                { "parallel_tool_calls", true },
+                { "previous_response_id", nullptr },
+                { "reasoning", { { "effort", nullptr }, { "summary", nullptr } } },
+                { "store", true },
+                { "temperature", 1.0 },
+                { "text", { { "format", { { "type", "text" } } } } },
+                { "tool_choice", "auto" },
+                { "tools", nlohmann::json::array() },
+                { "top_p", 1.0 },
+                { "truncation", "disabled" },
+                { "usage",
+                  { { "input_tokens", prompt_tokens_size },
+                    { "input_tokens_details", { { "cached_tokens", 0 } } },
+                    { "output_tokens", completion_tokens },
+                    { "output_tokens_details", { { "reasoning_tokens", 0 } } },
+                    { "total_tokens", prompt_tokens_size + completion_tokens } } },
+                { "user", nullptr },
+                { "metadata", nlohmann::json::object() }
+            };
+
+            res->set_content(res_body.dump(4));
+            res->endend();
+        }
     };
 
     // oai (completions, chat completions, embedding)

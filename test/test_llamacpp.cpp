@@ -311,7 +311,7 @@ TEST_CASE("test_chat_template")
         {
             std::cout << "chat template: \n" << common_chat_templates_source(tmpls.get()) << std::endl;
             std::cout << "example of chat message: \n"
-                      << common_chat_format_example(tmpls.get(), add_generation_prompt).c_str() << std::endl;
+                      << common_chat_format_example(tmpls.get(), add_generation_prompt, {}).c_str() << std::endl;
         }
 
         {

@@ -32,6 +32,7 @@ struct xoptions
 
         n_ctx      = 0; // get from model
         n_batch    = 4096;
+        n_ubatch   = 4096;
         ngl        = 0;
         flash_attn = false;
 
@@ -47,6 +48,7 @@ struct xoptions
     // decoding
     int n_ctx;
     int n_batch;
+    int n_ubatch;
     int ngl;
     bool flash_attn;
     // server

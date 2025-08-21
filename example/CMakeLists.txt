@@ -14,7 +14,7 @@ endfunction()
 
 add_llm_example(avllm_gen)
 add_llm_example(avllm_chat)
-add_llm_example(avllm_chat_ng)
+#add_llm_example(avllm_chat_ng)
 add_llm_example(avllm_cli)
 add_llm_example(avllm_embedding)
 add_llm_example(avllm_sentence_similarity)
