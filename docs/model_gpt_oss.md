@@ -1,6 +1,8 @@
 # Tools
 
 ## Web browsing (tools)
+Given the query (text) ===[Model]===> Search information in internet ===[Model]===> return answer
+
 <img src="images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="800" />
 
 ## Function calling
