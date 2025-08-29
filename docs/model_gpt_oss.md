@@ -1,5 +1,8 @@
 # Tools
 
+* GPT-OSS (Python tools)
+<img src="images/gpt_oss_python_01.gif" alt="Demo web browsing" width="900" />
+
 ## Agentic - Web browsing (tools)
 Given the query (text) ===[Model]===> Search information in internet ===[Model]===> return answer
 
