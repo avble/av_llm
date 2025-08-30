@@ -455,7 +455,7 @@ static void chat_cmd_handler(std::filesystem::path model_path)
         const llama_vocab * vocab = llama_model_get_vocab(model.get());
         // const llama_vocab * vocab = llama_model_get_vocab(model);
 
-        bool is_first       = llama_kv_self_used_cells(ctx.get()) == 0;
+        bool is_first       = llama_memory_seq_pos_max(llama_get_memory(ctx.get()), 0) == -1;
         int n_prompt_tokens = -llama_tokenize(vocab, prompt.c_str(), prompt.size(), NULL, 0, is_first, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
 
@@ -490,7 +490,7 @@ static void chat_cmd_handler(std::filesystem::path model_path)
         while (true)
         {
             int n_ctx      = llama_n_ctx(ctx.get());
-            int n_ctx_used = llama_kv_self_used_cells(ctx.get());
+            int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx.get()), 0) + 1;
 
             if (n_ctx_used + batch.n_tokens > n_ctx)
             {
@@ -498,9 +498,9 @@ static void chat_cmd_handler(std::filesystem::path model_path)
                 return;
             }
 
-            if (llama_decode(ctx.get(), batch))
+            if (int rc = llama_decode(ctx.get(), batch); rc)
             {
-                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);
+                AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, rc);
                 return;
             }
 
@@ -588,7 +588,7 @@ int context_gen_text_until_eog(llama_context * ctx, std::vector<llama_token> & p
     while (true)
     {
         int n_ctx      = llama_n_ctx(ctx);
-        int n_ctx_used = llama_kv_self_used_cells(ctx);
+        int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) + 1;
 
         if (n_ctx_used + batch.n_tokens > n_ctx)
         {
@@ -596,7 +596,6 @@ int context_gen_text_until_eog(llama_context * ctx, std::vector<llama_token> & p
             func_(-1, "");
             return -1;
         }
-
         if (llama_decode(ctx, batch))
         {
             AVLLM_LOG_ERROR("%s : failed to eval, return code %d\n", __func__, 1);

@@ -7,7 +7,6 @@ import time
 from openai_harmony import SystemContent, Message, Conversation, Role, load_harmony_encoding, HarmonyEncodingName
 from gpt_oss.tools.simple_browser import SimpleBrowserTool
 from gpt_oss.tools.simple_browser.backend import ExaBackend
-from gpt_oss.tools.python_docker.docker_tool import PythonTool
 
 client = OpenAI(
     base_url="http://127.0.0.1:8081/v1",
@@ -20,8 +19,6 @@ backend = ExaBackend(
 
 browser_tool = SimpleBrowserTool(backend=backend, max_search_results = 5)
 encoding = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
-
-python_tool = PythonTool()
 
 
 def parse_harmony_text(raw_text: str):
@@ -56,7 +53,10 @@ async def chat_with_model(message, history, use_browser_search):
     
     if not message.strip():
         return history, ""
-        
+    
+    # Append user message and empty assistant placeholder (idiomatic Gradio pattern)
+    history = history + [[message, ""]]    
+    
     # construct the system message
     system_message_content = SystemContent.new().with_conversation_start_date(
         datetime.datetime.now().strftime("%Y-%m-%d")
@@ -76,22 +76,16 @@ async def chat_with_model(message, history, use_browser_search):
         # enables the tool
         system_message_content = system_message_content.with_tools(browser_tool.tool_config)
         # alternatively you could use the following if your tool is not stateless
-        # system_message_content = system_message_content.with_browser_tool()
+        system_message_content = system_message_content.with_browser_tool()
+        chat_messages.append(Message.from_role_and_content(Role.USER, message))
 
-    if use_python_tool:
-        system_message_content = system_message_content.with_tools(python_tool.tool_config)
-
-    if not use_browser_search and not use_python_tool:
+    if not use_browser_search:
         for user_msg, assistant_msg in history:
             if user_msg:
                 chat_messages.append(Message.from_role_and_content(Role.USER, user_msg))
 
             if assistant_msg:
                 chat_messages.append(Message.from_role_and_content(Role.ASSISTANT, assistant_msg))
-
-    # Append user message and empty assistant placeholder (idiomatic Gradio pattern)
-    history = history + [[message, ""]] 
-    chat_messages.append(Message.from_role_and_content(Role.USER, message))
         
 
     system_message = Message.from_role_and_content(Role.SYSTEM, system_message_content)
@@ -319,18 +313,15 @@ async def chat_with_model(message, history, use_browser_search):
                     raise Exception("Network Error")
                 
                 print(harmony_text)
+
         else:
             time_time = time.time()
             total_total_time = 0.0
             total_total_time = time_time - start_time_time
             history[-1] = [message, harmony_text.get("final", "") + "\n" + add_static_log(int(total_total_time*1000), int(total_request_time*1000))]
-            # history[-1] = [message, harmony_msg_turn_2 + "\n" + add_static_log(int(total_total_time*1000), int(total_request_time*1000))]
             return history, ""
 
     except Exception as e:
-        time_time = time.time()
-        total_total_time = 0.0
-        total_total_time = time_time - start_time_time
         error_message = f"❌ Network Error"
         history[-1][1] = error_message + "\n" + add_static_log(int(total_total_time*1000), int(total_request_time*1000))
         print(str(e))
@@ -356,8 +347,7 @@ with gr.Blocks(title="💬 Chatbot") as demo:
             # In Streamlit: if "show_browser" in st.query_params:
             # For Gradio, we'll always show it (simplified)
             gr.Markdown("#### Built-in Tools") 
-            use_browser_search = gr.Checkbox(label="Web browser", value=False)
-            use_python_tool = gr.Checkbox(label="Python tool", value=False)
+            use_browser_search = gr.Checkbox(label="Web search", value=False)                
    
     # Chat functionality
     inputs = [msg, chatbot, use_browser_search]

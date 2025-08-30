@@ -30,7 +30,7 @@ struct xoptions
 
         repeat_penalty = 1.0;
 
-        n_ctx      = 0; // get from model
+        n_ctx      = 1024; // get from model
         n_batch    = 4096;
         n_ubatch   = 4096;
         ngl        = 0;
@@ -149,7 +149,6 @@ static std::string string_generate_random(int length)
     }
     return result;
 }
-
 // json
 static bool json_is_array_of_numbers(const json & data)
 {

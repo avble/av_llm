@@ -250,7 +250,7 @@ int main(int argc, char ** argv)
 
             auto tokenize = [&ctx, &model](const std::string & text) {
                 const llama_vocab * vocab = llama_model_get_vocab(model);
-                bool is_first             = llama_kv_self_used_cells(ctx) == 0;
+                bool is_first             = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) == -1;
                 int n_prompt_tokens       = -llama_tokenize(vocab, &text[0], text.size(), NULL, 0, is_first, true);
                 std::vector<llama_token> prompt_tokens(n_prompt_tokens);
                 if (llama_tokenize(vocab, &text[0], text.size(), prompt_tokens.data(), prompt_tokens.size(), is_first, true) < 0)
@@ -289,7 +289,7 @@ int main(int argc, char ** argv)
                 do
                 {
                     int n_ctx      = llama_n_ctx(ctx);
-                    int n_ctx_used = llama_kv_self_used_cells(ctx);
+                    int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) + 1;
 
                     if (n_ctx_used + batch.n_tokens > n_ctx)
                     {
@@ -445,7 +445,7 @@ int main(int argc, char ** argv)
             exit(-1);
         }
 
-        bool is_first       = llama_kv_self_used_cells(ctx) == 0;
+        bool is_first       = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) == -1;
         int n_prompt_tokens = -llama_tokenize(vocab, &chat_message_output[0], chat_message_size, NULL, 0, is_first, true);
         std::vector<llama_token> prompt_tokens(n_prompt_tokens);
 
@@ -482,7 +482,7 @@ int main(int argc, char ** argv)
         while (true)
         {
             int n_ctx      = llama_n_ctx(ctx);
-            int n_ctx_used = llama_kv_self_used_cells(ctx);
+            int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) + 1;
 
             if (n_ctx_used + batch.n_tokens > n_ctx)
             {

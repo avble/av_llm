@@ -1,5 +1,3 @@
-# Run this before running the tool:
-# $ docker image pull python:3.11
 import io
 import tarfile
 from typing import Any, AsyncIterator
@@ -28,9 +26,9 @@ def call_python_script(script: str) -> str:
         _docker_client = docker.from_env()
         # pull image `python:3.11` if not present
         try:
-            _docker_client.images.get("python:3.11")
+            _docker_client.images.get("av_python:3.11")
         except docker.errors.ImageNotFound:
-            _docker_client.images.pull("python:3.11")
+            _docker_client.images.pull("av_python:3.11")
 
     # 1. Create a temporary tar archive containing the script
     script_name = "script.py"
@@ -44,7 +42,7 @@ def call_python_script(script: str) -> str:
 
     # 2. Start the container
     container = _docker_client.containers.create(
-        "python:3.11", command="sleep infinity", detach=True
+        "av_python:3.11", command="sleep infinity", detach=True
     )
     try:
         container.start()
@@ -52,12 +50,24 @@ def call_python_script(script: str) -> str:
         container.put_archive(path="/tmp", data=tarstream.read())
         # 4. Execute the script
         exec_result = container.exec_run(f"python /tmp/{script_name}")
-        output = exec_result.output.decode("utf-8")
+
+        exec_result = container.exec_run("ls /tmp")
+        file_list = exec_result.output.decode("utf-8").splitlines()
+
+        if not file_list:
+            return ""
+        else:
+            filename = file_list[0]  # Pick the first file (or use logic to pick a specific one)
+            file_path = f"/tmp/{filename}"
+            stream, stat = container.get_archive(file_path)
+
+            file_like = io.BytesIO(b''.join(stream))  # Get the tar stream in memory
+            with tarfile.open(fileobj=file_like) as tar:
+                tar.extractall(path=".")  # Save the file locally to ./plot.png
+            return filename
+
     finally:
         container.remove(force=True)
-    return output
-
-
 class PythonTool(Tool):
     def __init__(
         self,
@@ -75,10 +85,17 @@ class PythonTool(Tool):
 
     @property
     def instruction(self) -> str:
+#         return """
+# Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).
+# When you send a message containing python code to python, it will be executed in a stateless docker container, and the stdout of that process will be returned to you. You have to use print statements to access the output.
+#         """.strip()
         return """
-Use this tool to execute Python code in your chain of thought. The code will not be shown to the user. This tool should be used for internal reasoning, but not for code that is intended to be visible to the user (e.g. when creating plots, tables, or files).
-When you send a message containing python code to python, it will be executed in a stateless docker container, and the stdout of that process will be returned to you. You have to use print statements to access the output.
+Use this tool to execute Python code in your chain of thought. The code will not be shown to the user.
+When you send a message containing python code to python, it will be executed in a stateless docker container.
+The docker will execute the python code and return the 
++ if the result is in graph, histogram, table, the png file content name, plot_result.png, is saved to /tmp folder
         """.strip()
+
 
     @property
     def tool_config(self) -> ToolNamespaceConfig:

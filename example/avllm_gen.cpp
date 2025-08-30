@@ -37,8 +37,10 @@ static void print_usage(int, char ** argv)
 // global option
 std::string model_path;
 std::string prompt;
-int top_k   = 20;
-float top_p = 0.8;
+int top_k         = 20;
+float temperature = 1.0;
+float top_p       = 1.8;
+float min_p       = 0.05;
 
 int main(int argc, char ** argv)
 {
@@ -135,9 +137,9 @@ int main(int argc, char ** argv)
         auto sparams         = llama_sampler_chain_default_params();
         sparams.no_perf      = false;
         llama_sampler * smpl = llama_sampler_chain_init(sparams);
-        // llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
-        llama_sampler_chain_add(smpl, llama_sampler_init_temp(1.0f));
-        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, 1.0));
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_k(top_k));
+        llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
+        llama_sampler_chain_add(smpl, llama_sampler_init_top_p(top_p, min_p));
         llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
         // llama_sampler_chain_add(smpl, llama_sampler_init_dist(1234));
         return smpl;
@@ -198,7 +200,7 @@ int main(int argc, char ** argv)
         const auto t_main_start   = ggml_time_us();
         llama_token new_token_id;
         int num_token = 0;
-        while (num_token++ < 1000) // generate 1000 tokens
+        while (num_token++ < 2000) // generate 1000 tokens
         {
             new_token_id = llama_sampler_sample(smpl, ctx, -1);
 

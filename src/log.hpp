@@ -20,7 +20,7 @@ enum class log_level
 
 namespace {
 // Default log level based on build type
-#ifdef NDEBUG
+#ifndef NDEBUG
 static log_level current_log_level = log_level::LOG_INFO; // Release build
 #else
 static log_level current_log_level = log_level::LOG_TRACE; // Debug build
