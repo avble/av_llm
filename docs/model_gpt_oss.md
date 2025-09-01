@@ -1,10 +1,18 @@
 # Tools
 
-* GPT-OSS (Python tools)
+## Python tools
+* Demo: draw the mathematic graphs, charts, ...
+
 <img src="images/gpt_oss_python_01.gif" alt="Demo web browsing" width="900" />
 
-## Agentic - Web browsing (tools)
-Given the query (text) ===[Model]===> Search information in internet ===[Model]===> return answer
+## Web browsing
+
+* Step 1: User gives query to model, and model return a function calling
+* Step 2: Retrieve data from internet based on function calling
+* Step 3: Feed the retrieved data to model for another function calling or final message
+
+The step [2] & [3] are repeated several times until final answer is generated.
+
 
 <img src="images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="800" />
 
