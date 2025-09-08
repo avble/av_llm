@@ -1,20 +1,21 @@
 # Tools
-
-## Python tools
-* Demo: draw the mathematic graphs, charts, ...
-
-<img src="images/gpt_oss_python_01.gif" alt="Demo web browsing" width="900" />
-
 ## Web browsing
 
-* Step 1: User gives query to model, and model return a function calling
-* Step 2: Retrieve data from internet based on function calling
-* Step 3: Feed the retrieved data to model for another function calling or final message
+* Description: model calling 'search' and 'open' function to interact with the web for up-to-date info beyond their knowledge cutoff
+* Model: gpt_oss
+* LLM model self-hosted by [customized llama.cpp](https://github.com/avble/av_llm)
+* integration with [xai.ai](https://exa.ai/)
+* Example tasks: Query the real-time temperature
 
-The step [2] & [3] are repeated several times until final answer is generated.
+<img src="images/gpt_oss_tool_web_search_3.gif" alt="Demo web browsing" width="800" />
 
 
-<img src="images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="800" />
+# Python tool
+* Description: Demo allowing the model to run code in python docker environment
+* Model: gpt_oss
+* LLM model self-hosted by [customized llama.cpp](https://github.com/avble/av_llm)
+* Example tasks: draw mathematical functions, graphs, charts
+<img src="images/gpt_oss_python_01.gif" alt="Demo web browsing" width="900" />
 
 ## Function calling
 <img src="images/function_calling.gif" alt="Demo chat" width="600" />
