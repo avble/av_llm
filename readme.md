@@ -2,8 +2,11 @@
 - Explore the features of gpt-oss model [gpt-oss capability findings](docs/model_gpt_oss.md)
 
 * GPT-OSS (Web browsing)
+> * Demo: model calling 'search' and 'open' function to interact with the web for up-to-date info beyond their knowledge cutoff
+> * Integration with [xai.ai](https://exa.ai/)
+> * Example tasks: Query the real-time temperature
+ 
 
-model calling 'search' and 'open' function to interact with the web for up-to-date info beyond their knowledge cutoff
 
 <img src="docs/images/gpt_oss_tool_web_search_3.gif" alt="Demo web browsing" width="800" />
 
@@ -16,6 +19,9 @@ model calling 'search' and 'open' function to interact with the web for up-to-da
 
 ## Demos
 * GPT-OSS (Python tools)
+>
+> * Description: Demo allowing the model to run code in python docker environment
+> * Example tasks: draw mathematical functions, graphs, charts
 <img src="docs/images/gpt_oss_python_01.gif" alt="Demo web browsing" width="700" />
 
 <details>
