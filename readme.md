@@ -1,6 +1,12 @@
 ## Hot
 - Explore the features of gpt-oss model [gpt-oss capability findings](docs/model_gpt_oss.md)
 
+* GPT-OSS (Web browsing)
+
+model calling 'search' and 'open' function to interact with the web for up-to-date info beyond their knowledge cutoff
+
+<img src="docs/images/gpt_oss_tool_web_search_3.gif" alt="Demo web browsing" width="800" />
+
 ## Overview
 - Develop a C++ server for serving the LLM inference
 - LLM inference engine based on [llama.cpp]
@@ -10,20 +16,22 @@
 
 ## Demos
 * GPT-OSS (Python tools)
-<img src="docs/images/gpt_oss_python_01.gif" alt="Demo web browsing" width="900" />
-
-* GPT-OSS (Web browsing)
-<img src="docs/images/gpt_oss_tool_web_search_3.gif" alt="Demo web browsing" width="800" />
+<img src="docs/images/gpt_oss_python_01.gif" alt="Demo web browsing" width="700" />
 
 <details>
 <summary>
 GPT-OSS (Old Web browsing)
- </summary>
+</summary>
+model calling 'search' and 'open' function to interact with the web for up-to-date info beyond their knowledge cutoff
 <img src="docs/images/gpt_oss_tool_web_search_2.gif" alt="Demo web browsing" width="600" />
 </details>
 
-* GPT-OSS (Function calling)
-<img src="docs/images/function_calling.gif" alt="Demo chat" width="600" />
+<details>
+<summary>
+GPT-OSS (Function calling)
+</summary>
+<img src="docs/images/function_calling.gif" alt="Demo chat" width="600" />  
+</details>
 
 <details>
 <summary>
