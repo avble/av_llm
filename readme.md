@@ -132,7 +132,8 @@ ollama
 ## work log 
 | Date       | Work log                                                                 |
 |------------|--------------------------------------------------------------------------|
-| 2025-08-28 | Sync with upstream of [llama.cpp]                                                 |
+| 2025-09-15 | Improve the demo: GPT-OSS web search. Example of python-binding          |
+| 2025-08-28 | Sync with upstream of [llama.cpp]                                        |
 | 2025-08-21 | Demo: GPT-OSS Web search                                                 |
 | 2025-08-13 | Demo: GPT-OSS structured output, function-calling                        |
 | 2025-08-09 | Demo: semantic search with sentence embedding and vector database        |
