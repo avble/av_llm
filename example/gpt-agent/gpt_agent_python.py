@@ -2,7 +2,6 @@
 + Demo the agentic `python code execution`
 """
 
-
 import gradio as gr
 import datetime
 from openai import OpenAI
@@ -11,6 +10,7 @@ import json
 import time
 from openai_harmony import SystemContent, Message, Conversation, Role, load_harmony_encoding, HarmonyEncodingName
 from gpt_oss.tools.python_docker.docker_tool import PythonTool
+
 
 oai_client = OpenAI(
     base_url="http://127.0.0.1:8081/v1",
@@ -202,6 +202,7 @@ with gr.Blocks(title="💬 Chatbot") as demo:
         
         with gr.Column(scale=1):
             img = gr.Image(type="filepath", label="Image Preview")    
+
 
     # Chat functionality
     inputs = [msg, chatbot]

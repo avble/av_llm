@@ -1,0 +1,6 @@
+# install
+
+``` bash
+$ pip install .
+```
+
