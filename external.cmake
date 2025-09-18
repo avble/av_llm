@@ -126,7 +126,7 @@ endif()
 FetchContent_Declare(
 	llama_cpp
 	GIT_REPOSITORY https://github.com/avble/llama.cpp.git
-	GIT_TAG        ca493d59 #ecc7e88b #main
+	GIT_TAG        main #ca493d59 #ecc7e88b #main
 )
 
 FetchContent_GetProperties(llama_cpp)

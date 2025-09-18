@@ -311,7 +311,7 @@ TEST_CASE("test_chat_template")
         {
             std::cout << "chat template: \n" << common_chat_templates_source(tmpls.get()) << std::endl;
             std::cout << "example of chat message: \n"
-                      << common_chat_format_example(tmpls.get(), add_generation_prompt).c_str() << std::endl;
+                      << common_chat_format_example(tmpls.get(), add_generation_prompt, {}).c_str() << std::endl;
         }
 
         {
@@ -594,7 +594,7 @@ int context_gen_text_until_eog(llama_context * ctx, std::vector<llama_token> & p
     while (count++ < 10)
     {
         int n_ctx      = llama_n_ctx(ctx);
-        int n_ctx_used = llama_kv_self_used_cells(ctx);
+        int n_ctx_used = llama_memory_seq_pos_max(llama_get_memory(ctx), 0) + 1;
 
         if (n_ctx_used + batch.n_tokens > n_ctx)
         {

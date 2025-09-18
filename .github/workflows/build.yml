@@ -3,142 +3,142 @@ name: Build and Test
 on: workflow_dispatch
 
 jobs:
-  macOS-arm64:
-    runs-on: macos-14
+  # macOS-arm64:
+  #   runs-on: macos-14
 
-    steps:
-      - name: Clone
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  #   steps:
+  #     - name: Clone
+  #       id: checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
 
-      - name: prepare build
-        id: prepare
-        run: brew install curl
+  #     - name: prepare build
+  #       id: prepare
+  #       run: brew install curl
 
-      - name: Build
-        id: cmake_build
-        run: |
-          cmake --preset arm64-apple-clang-release
-          cmake --build build-arm64-apple-clang-release
+  #     - name: Build
+  #       id: cmake_build
+  #       run: |
+  #         cmake --preset arm64-apple-clang-release
+  #         cmake --build build-arm64-apple-clang-release
 
-  macOS-x64:
-    runs-on: macos-13
+  # macOS-x64:
+  #   runs-on: macos-13
 
-    steps:
-      - name: Clone
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  #   steps:
+  #     - name: Clone
+  #       id: checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
 
-      - name: prepare build
-        id: prepare
-        run: brew install curl
+  #     - name: prepare build
+  #       id: prepare
+  #       run: brew install curl
 
-      - name: Build
-        id: cmake_build
-        run: |
-          cmake --preset x64-apple-clang-release
-          cmake --build build-x64-apple-clang-release
+  #     - name: Build
+  #       id: cmake_build
+  #       run: |
+  #         cmake --preset x64-apple-clang-release
+  #         cmake --build build-x64-apple-clang-release
 
-  Ubuntu:
-    runs-on: ubuntu-22.04
+  # Ubuntu:
+  #   runs-on: ubuntu-22.04
 
-    steps:
-      - name: Clone
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  #   steps:
+  #     - name: Clone
+  #       id: checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
 
-      - name: prepare build
-        id: prepare
-        run: sudo apt-get install libcurl4-openssl-dev
+  #     - name: prepare build
+  #       id: prepare
+  #       run: sudo apt-get install libcurl4-openssl-dev
 
-      - name: Build
-        id: cmake_build
-        run: |
-          cmake --preset x64-Ubuntu-gcc-release
-          cmake --build build-x64-Ubuntu-gcc-release
+  #     - name: Build
+  #       id: cmake_build
+  #       run: |
+  #         cmake --preset x64-Ubuntu-gcc-release
+  #         cmake --build build-x64-Ubuntu-gcc-release
 
-#  Windows-vulkan:
-#    runs-on: windows-latest
-#
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#        with:
-#          fetch-depth: 0
-#
-#      - name: Download and Install Vulkan SDK
-#        shell: pwsh
-#        run: |
-#          $VulkanVersion = "1.3.280.0"
-#          $VulkanInstallerUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/VulkanSDK-$VulkanVersion-Installer.exe"
-#          Invoke-WebRequest -Uri $VulkanInstallerUrl -OutFile VulkanSDK-Installer.exe
-#          Start-Process .\VulkanSDK-Installer.exe -ArgumentList '--accept-licenses --default-answer --confirm-command install' -Wait
-#          # Read installed Vulkan path from registry
-#
-#          $regPath = "HKLM:\SOFTWARE\Khronos\Vulkan\SDK"
-#          $installPath = Get-ItemPropertyValue -Path $regPath -Name $VulkanVersion
-#
-#          # Set VULKAN_SDK for subsequent steps
-#          echo "VULKAN_SDK=$installPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-#
-#      - name: Set up vcpkg and install libcurl
-#        shell: powershell
-#        run: |
-#          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-#          cd C:\vcpkg
-#          .\bootstrap-vcpkg.bat
-#          .\vcpkg.exe install curl:x64-windows
-#          choco install ninja -y
-#
-#
-#      - name: Build with Vulkan
-#        shell: cmd
-#        run: |
-#          echo VULKAN_SDK is %VULKAN_SDK%
-#          build_vulkan.bat
+ Windows-vulkan:
+   runs-on: windows-latest
 
-  windows-sycl:
-    runs-on: windows-latest
+   steps:
+     - name: Checkout
+       uses: actions/checkout@v4
+       with:
+         fetch-depth: 0
 
-    defaults:
-      run:
-        shell: bash
+     - name: Download and Install Vulkan SDK
+       shell: pwsh
+       run: |
+         $VulkanVersion = "1.3.280.0"
+         $VulkanInstallerUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/VulkanSDK-$VulkanVersion-Installer.exe"
+         Invoke-WebRequest -Uri $VulkanInstallerUrl -OutFile VulkanSDK-Installer.exe
+         Start-Process .\VulkanSDK-Installer.exe -ArgumentList '--accept-licenses --default-answer --confirm-command install' -Wait
+         # Read installed Vulkan path from registry
 
-    env:
-      WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7cd9bba0-7aab-4e30-b3ae-2221006a4a05/intel-oneapi-base-toolkit-2025.1.1.34_offline.exe
-      WINDOWS_DPCPP_MKL: intel.oneapi.win.cpp-dpcpp-common:intel.oneapi.win.mkl.devel:intel.oneapi.win.dnnl:intel.oneapi.win.tbb.devel
-      ONEAPI_ROOT: "C:/Program Files (x86)/Intel/oneAPI"
+         $regPath = "HKLM:\SOFTWARE\Khronos\Vulkan\SDK"
+         $installPath = Get-ItemPropertyValue -Path $regPath -Name $VulkanVersion
 
-    steps:
-      - name: Clone
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+         # Set VULKAN_SDK for subsequent steps
+         echo "VULKAN_SDK=$installPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Install
-        run: |
-          scripts/install-oneapi.bat $WINDOWS_BASEKIT_URL $WINDOWS_DPCPP_MKL
+     - name: Set up vcpkg and install libcurl
+       shell: powershell
+       run: |
+         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+         cd C:\vcpkg
+         .\bootstrap-vcpkg.bat
+         .\vcpkg.exe install curl:x64-windows
+         choco install ninja -y
 
-      - name: Set up vcpkg and install libcurl
-        shell: powershell
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
-          cd C:\vcpkg
-          .\bootstrap-vcpkg.bat
-          .\vcpkg.exe install curl:x64-windows
-          choco install ninja -y
 
-      - name: Build
-        id: cmake_build
-        shell: cmd
-        run: |
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" intel64 --force
-          cmake --preset x64-windows-sycl-release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-          cmake --build build-x64-windows-sycl-release
+     - name: Build with Vulkan
+       shell: cmd
+       run: |
+         echo VULKAN_SDK is %VULKAN_SDK%
+         cmake --preset x64-windows-vulkan-release && cd build-x64-windows-vulkan-release && cmake --build .
+
+  # windows-sycl:
+  #   runs-on: windows-latest
+
+  #   defaults:
+  #     run:
+  #       shell: bash
+
+  #   env:
+  #     WINDOWS_BASEKIT_URL: https://registrationcenter-download.intel.com/akdlm/IRC_NAS/7cd9bba0-7aab-4e30-b3ae-2221006a4a05/intel-oneapi-base-toolkit-2025.1.1.34_offline.exe
+  #     WINDOWS_DPCPP_MKL: intel.oneapi.win.cpp-dpcpp-common:intel.oneapi.win.mkl.devel:intel.oneapi.win.dnnl:intel.oneapi.win.tbb.devel
+  #     ONEAPI_ROOT: "C:/Program Files (x86)/Intel/oneAPI"
+
+  #   steps:
+  #     - name: Clone
+  #       id: checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+
+  #     - name: Install
+  #       run: |
+  #         scripts/install-oneapi.bat $WINDOWS_BASEKIT_URL $WINDOWS_DPCPP_MKL
+
+  #     - name: Set up vcpkg and install libcurl
+  #       shell: powershell
+  #       run: |
+  #         git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+  #         cd C:\vcpkg
+  #         .\bootstrap-vcpkg.bat
+  #         .\vcpkg.exe install curl:x64-windows
+  #         choco install ninja -y
+
+  #     - name: Build
+  #       id: cmake_build
+  #       shell: cmd
+  #       run: |
+  #         call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" intel64 --force
+  #         cmake --preset x64-windows-sycl-release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+  #         cmake --build build-x64-windows-sycl-release
