@@ -180,9 +180,18 @@ Support various GPU's library/platform.
 
 ## Compilation
 
+prepare the CUDA, VULKAN, environment if needed.
+
 ``` shell
-T.B.U
+cmake --preset x64-windows-release && cmake --build build-x64-windows-release # build cpu only
+cmake --preset x64-windows-vulkan-release && cmake --build build-x64-windows-vulkan-release # build vulkan
+cmake --preset x64-windows-cuda-release && cmake --build build-x64-windows-cuda-release # build cuda 
 ```
+
+note: 
+- can build CPU only, CUDA, VULKAN on windows
+- can build CPU only on Linux
+
 
 ## Main components
 - Web UI: Provide a simple web UI interface to explore/experiment (borrowed from @llama.cpp project)
