@@ -571,4 +571,124 @@ static llama_tokens format_infill(const llama_vocab *vocab,
 }
 // to here
 extern "C" int llama_server_main(int argc, char *argv[]);
+
+// openai helper
+
+namespace av_llm::openai {
+
+struct Model {
+  std::string id;
+  std::string object;
+  int64_t created;
+  std::string owned_by;
+
+  // Default constructor
+  Model() : id(""), object("model"), created(0), owned_by("") {}
+
+  // Parameterized constructor
+  Model(const std::string &id, const std::string &object, int64_t created,
+        const std::string &owned_by)
+      : id(id), object(object), created(created), owned_by(owned_by) {}
+
+  // Constructor from JSON
+  Model(const json &j) {
+    id = j.at("id").get<std::string>();
+    object = j.at("object").get<std::string>();
+    created = j.at("created").get<int64_t>();
+    owned_by = j.at("owned_by").get<std::string>();
+  }
+
+  // Convert to JSON
+  json to_json() const {
+    return json{{"id", id},
+                {"object", object},
+                {"created", created},
+                {"owned_by", owned_by}};
+  }
+};
+
+// Struct to represent the entire model list
+struct ModelList {
+  std::string object;
+  std::vector<Model> data;
+
+  // Default constructor
+  ModelList() : object("list") {}
+
+  // Constructor with data
+  ModelList(const std::vector<Model> &models) : object("list"), data(models) {}
+
+  // Constructor from JSON
+  ModelList(const json &j) {
+    object = j.at("object").get<std::string>();
+
+    // Parse the data array
+    for (const auto &model_json : j.at("data")) {
+      data.emplace_back(Model(model_json));
+    }
+  }
+
+  // Convert to JSON
+  json to_json() const {
+    json result;
+    result["object"] = object;
+
+    // Convert each model to JSON
+    json data_array = json::array();
+    for (const auto &model : data) {
+      data_array.push_back(model.to_json());
+    }
+    result["data"] = data_array;
+
+    return result;
+  }
+
+  // Add a model to the list
+  void add_model(const Model &model) { data.push_back(model); }
+
+  // Get number of models
+  size_t size() const { return data.size(); }
+};
+// Convenience functions for nlohmann/json automatic serialization
+static void to_json(json &j, const Model &m) { j = m.to_json(); }
+
+static void from_json(const json &j, Model &m) { m = av_llm::openai::Model(j); }
+
+static void to_json(json &j, const ModelList &ml) { j = ml.to_json(); }
+
+static void from_json(const json &j, av_llm::openai::ModelList &ml) {
+  ml = av_llm::openai::ModelList(j);
+}
+
+}  // namespace av_llm::openai
+	
+
+// model helper
+static std::unordered_map<std::string, std::string> pre_config_model;
+static void pre_config_model_init() {
+  // Qwen model
+  // pre_config_model["qween2.5-coder-3b"] =
+  //     "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf";
+
+  // pre_config_model["qween2.5-coder-0.5b"] =
+  //     "https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf";
+
+  pre_config_model["qween3-1.7b"] =
+      "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/"
+      "Qwen3-1.7B-Q8_0.gguf";
+
+  // tinyllama (error)
+  // pre_config_model["tinyllama-1.1b"] =
+  //     "https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v0.2-GGUF/resolve/main/ggml-model-q4_0.gguf";
+
+  // gemma ()
+
+  // llama
+
+  // phi3
+  pre_config_model["phi-3-mini-4k"] =
+      "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/"
+      "main/Phi-3-mini-4k-instruct-q4.gguf";
+}
+
 #endif

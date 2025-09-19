@@ -11,8 +11,6 @@ It can be used, modified.
 #include "llama-cpp.h"
 #include "llama.h"
 #include "log.hpp"
-#include "model.hpp"
-#include "openai.hpp"
 namespace av_llm {
 #include "index.html.gz.hpp"
 }
