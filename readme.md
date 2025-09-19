@@ -88,6 +88,9 @@ Demo Code Completion
    - [x] function
    - [ ] Logbrobs
 </details>
+
+[open-ai] responses
+
 <details>
  <summary>
 [open-ai] Models 
@@ -98,7 +101,7 @@ Demo Code Completion
    - [ ] delete a model
 </details>
 
-Embeddings 
+[open-ai] Embeddings 
 
 <details>
  <summary>
@@ -117,7 +120,7 @@ ollama
 - [x] File-level 
 - [ ] Rep-level
  </details>
- 
+
 
 ## Models
 [details](docs/model.md)
@@ -180,12 +183,15 @@ Support various GPU's library/platform.
 
 ## Compilation
 
-prepare the CUDA, VULKAN, environment if needed.
+prepare the CUDA, VULKAN, and development environment if needed.
 
 ``` shell
+# Windows
 cmake --preset x64-windows-release && cmake --build build-x64-windows-release # build cpu only
 cmake --preset x64-windows-vulkan-release && cmake --build build-x64-windows-vulkan-release # build vulkan
-cmake --preset x64-windows-cuda-release && cmake --build build-x64-windows-cuda-release # build cuda 
+cmake --preset x64-windows-cuda-release && cmake --build build-x64-windows-cuda-release # build cuda
+# Ubuntu
+cmake --preset x64-Ubuntu-gcc-release && cmake --build build-x64-Ubuntu-gcc-release # build CPU
 ```
 
 note: 
